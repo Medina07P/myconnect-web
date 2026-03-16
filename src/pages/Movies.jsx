@@ -6,7 +6,6 @@ import { useSubscription } from '../hooks/useSubscription';
 import SubscriptionWall from '../components/SubscriptionWall';
 import { fetchM3U } from '../services/fetchM3U';
 import { proxyUrl } from '../services/proxy';
-import { useState, useEffect, useRef } from 'react';
 
 function parseM3UMovies(text) {
   const lines = text.split('\n');
