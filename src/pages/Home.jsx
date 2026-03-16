@@ -6,6 +6,7 @@ import { useSubscription } from '../hooks/useSubscription';
 import SubscriptionWall from '../components/SubscriptionWall';
 import { fetchM3U } from '../services/fetchM3U';
 import Hls from 'hls.js';
+import { proxyUrl, PROXY_URL } from '../services/proxy';
 
 function parseM3U(text) {
   const lines = text.split('\n');
@@ -62,7 +63,7 @@ function Player({ channel, onClose }) {
     <div className="fixed inset-0 bg-black z-50 flex flex-col">
       <div className="flex items-center justify-between px-4 py-3 bg-black/80">
         <div className="flex items-center gap-3">
-          {channel.logo && <img src={channel.logo} alt="" className="w-8 h-8 object-contain rounded" />}
+          {channel.logo && <img src={proxyUrl(channel.logo)} alt="" className="w-8 h-8 object-contain rounded" />}
           <span className="text-white font-bold">{channel.name}</span>
           <span className="bg-red-600 text-white text-xs px-2 py-0.5 rounded-full font-bold animate-pulse">EN VIVO</span>
         </div>
@@ -142,7 +143,7 @@ export default function Home() {
           <button key={i} onClick={() => setPlaying(channel)}
             className="bg-white/5 hover:bg-white/10 border border-white/10 hover:border-red-500/50 rounded-xl p-3 flex flex-col items-center gap-2 transition-all">
             {channel.logo
-              ? <img src={channel.logo} alt={channel.name} className="w-12 h-12 object-contain rounded-lg" onError={e => { e.target.style.display = 'none'; }} />
+              ? <img src={proxyUrl(channel.logo)} alt={channel.name} className="w-12 h-12 object-contain rounded-lg" onError={e => { e.target.style.display = 'none'; }} />
               : <div className="w-12 h-12 bg-white/10 rounded-lg flex items-center justify-center text-2xl">📺</div>}
             <span className="text-white text-xs text-center line-clamp-2 leading-tight">{channel.name}</span>
           </button>

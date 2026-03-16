@@ -1,12 +1,14 @@
-// ✅ Intenta reproducir directo primero.
-// Si falla por CORS, usa un proxy público como fallback.
-export function getStreamUrl(url) {
-  // Algunos streams sí funcionan directo en web
-  // Los que no, los pasamos por un proxy CORS
-  return url;
-}
+const PROXY_URL = import.meta.env.DEV
+  ? 'http://localhost:3001'
+  : 'https://myconnect-web-production.up.railway.app';
 
-// Proxy público para streams que bloquean CORS
-export function getProxiedUrl(url) {
-  return `https://corsproxy.io/?${encodeURIComponent(url)}`;
-}
+export const proxyUrl = (url) => {
+  if (!url) return '';
+  // ✅ Si la URL es HTTP, pásala por el proxy para evitar Mixed Content
+  if (url.startsWith('http://')) {
+    return `${PROXY_URL}/api/proxy?url=${encodeURIComponent(url)}`;
+  }
+  return url;
+};
+
+export { PROXY_URL };

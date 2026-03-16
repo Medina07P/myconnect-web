@@ -6,6 +6,7 @@ import { useSubscription } from '../hooks/useSubscription';
 import SubscriptionWall from '../components/SubscriptionWall';
 import { fetchM3U } from '../services/fetchM3U';
 import Hls from 'hls.js';
+import { proxyUrl, PROXY_URL } from '../services/proxy';
 
 function parseM3USeries(text) {
   const lines = text.split('\n');
@@ -167,7 +168,7 @@ export default function Series() {
           <button key={i} onClick={() => setSelectedSeries(series)} className="group flex flex-col gap-2 text-left">
             <div className="relative aspect-[2/3] rounded-xl overflow-hidden bg-white/5 border border-white/10 group-hover:border-purple-500/50 transition-all">
               {series.logo
-                ? <img src={series.logo} alt={series.name} className="w-full h-full object-cover" onError={e => { e.target.style.display = 'none'; }} />
+                ? <img src={proxyUrl(series.logo)} alt={series.name} className="w-full h-full object-cover" onError={e => { e.target.style.display = 'none'; }} />
                 : <div className="absolute inset-0 flex items-center justify-center text-4xl">🎭</div>}
               <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-all flex items-center justify-center">
                 <span className="opacity-0 group-hover:opacity-100 text-white text-3xl transition-opacity">▶</span>
