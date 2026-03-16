@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { doc, getDoc } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth, db } from '../services/firebase';
@@ -40,7 +40,7 @@ function ContinueWatching({ onPlay }) {
   const [items, setItems] = useState([]);
 
   useEffect(() => {
-    getAllProgress().then(setItems);
+    getAllProgress('movie').then(setItems); // ✅ solo películas
   }, []);
 
   if (items.length === 0) return null;
@@ -50,14 +50,9 @@ function ContinueWatching({ onPlay }) {
       <h2 className="text-white font-bold text-lg mb-3">▶ Continuar viendo</h2>
       <div className="flex gap-3 overflow-x-auto pb-2">
         {items.map((item, i) => (
-          <button
-            key={i}
-            onClick={() => onPlay(item)}
-            className="flex-shrink-0 w-32 text-left group"
-          >
+          <div key={i} onClick={() => onPlay(item)} className="flex-shrink-0 w-32 text-left cursor-pointer group">
             <div className="relative aspect-[2/3] rounded-xl overflow-hidden bg-white/5 border border-white/10 group-hover:border-orange-500/50 mb-1">
               <div className="absolute inset-0 flex items-center justify-center text-3xl">🎬</div>
-              {/* ✅ Barra de progreso */}
               <div className="absolute bottom-0 left-0 right-0 h-1 bg-white/20">
                 <div
                   className="h-full bg-orange-500"
@@ -66,7 +61,7 @@ function ContinueWatching({ onPlay }) {
               </div>
             </div>
             <span className="text-white text-xs line-clamp-2 leading-tight">{item.name}</span>
-          </button>
+          </div>
         ))}
       </div>
     </div>
@@ -81,7 +76,8 @@ function FavButton({ item, type }) {
   }, [item.url]);
 
   const toggle = async (e) => {
-    e.stopPropagation(); // no abrir el player
+    e.stopPropagation();
+    e.preventDefault();
     if (fav) {
       await removeFavorite(item.url);
       setFav(false);
@@ -92,12 +88,13 @@ function FavButton({ item, type }) {
   };
 
   return (
-    <button
+    <div
       onClick={toggle}
-      className="absolute top-2 right-2 z-10 w-8 h-8 flex items-center justify-center rounded-full bg-black/50 hover:bg-black/80 transition-colors"
+      role="button"
+      className="absolute top-2 right-2 z-10 w-8 h-8 flex items-center justify-center rounded-full bg-black/50 hover:bg-black/80 transition-colors cursor-pointer"
     >
       <span className="text-lg">{fav ? '❤️' : '🤍'}</span>
-    </button>
+    </div>
   );
 }
 
@@ -115,38 +112,31 @@ function Player({ movie, onClose }) {
     videoEl.src = proxiedUrl;
     videoEl.load();
 
-    // ✅ Cuando el video esté listo, retoma desde donde quedó
     videoEl.onloadedmetadata = async () => {
       const progress = await getProgress(movie.url);
       if (progress && progress.currentTime > 10) {
-        // Solo retoma si hay más de 10 segundos guardados
         const remaining = progress.duration - progress.currentTime;
-        if (remaining > 30) {
-          // Solo retoma si quedan más de 30 segundos
-          videoEl.currentTime = progress.currentTime;
-        }
+        if (remaining > 30) videoEl.currentTime = progress.currentTime;
       }
       videoEl.play().catch(() => {});
     };
 
-    // ✅ Guarda el progreso cada 5 segundos
     const interval = setInterval(() => {
       if (videoEl.currentTime > 0 && !videoEl.paused) {
-        saveProgress(movie.url, movie.name, videoEl.currentTime, videoEl.duration || 0);
+        saveProgress(movie.url, movie.name, videoEl.currentTime, videoEl.duration || 0, 'movie');
       }
     }, 5000);
 
-    // ✅ Guarda al pausar o cerrar
     videoEl.onpause = () => {
       if (videoEl.currentTime > 0) {
-        saveProgress(movie.url, movie.name, videoEl.currentTime, videoEl.duration || 0);
+        saveProgress(movie.url, movie.name, videoEl.currentTime, videoEl.duration || 0, 'movie');
       }
     };
 
     return () => {
       clearInterval(interval);
       if (videoEl.currentTime > 0) {
-        saveProgress(movie.url, movie.name, videoEl.currentTime, videoEl.duration || 0);
+        saveProgress(movie.url, movie.name, videoEl.currentTime, videoEl.duration || 0, 'movie');
       }
       videoEl.pause();
       videoEl.src = '';
@@ -214,57 +204,51 @@ export default function Movies() {
   const visible = filtered.slice(0, visibleCount);
 
   return (
-  <div className="p-4 max-w-7xl mx-auto">
-    <Player movie={playing} onClose={() => setPlaying(null)} />
+    <div className="p-4 max-w-7xl mx-auto">
+      <Player movie={playing} onClose={() => setPlaying(null)} />
 
-    {/* ✅ Continuar viendo */}
-    <ContinueWatching onPlay={(item) => {
-      const movie = movies.find(m => m.url === item.url);
-      if (movie) setPlaying(movie);
-    }} />
+      <ContinueWatching onPlay={(item) => {
+        const movie = movies.find(m => m.url === item.url);
+        if (movie) setPlaying(movie);
+      }} />
 
-    <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
-      <h1 className="text-xl font-bold text-white">🎬 Películas <span className="text-white/30 text-sm font-normal ml-2">{filtered.length} títulos</span></h1>
-      <input type="text" placeholder="Buscar película..." value={search} onChange={e => setSearch(e.target.value)}
-        className="bg-white/10 text-white placeholder-white/40 px-4 py-2 rounded-xl outline-none focus:ring-2 focus:ring-orange-500 w-64" />
-    </div>
-    <div className="flex gap-2 overflow-x-auto pb-2 mb-4">
-      {genres.map(genre => (
-        <button key={genre} onClick={() => setActiveGenre(genre)}
-          className={`px-4 py-1.5 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${activeGenre === genre ? 'bg-orange-500 text-white' : 'bg-white/10 text-white/60 hover:bg-white/20'}`}>
-          {genre}
-        </button>
-      ))}
-    </div>
-    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
-      {visible.map((movie, i) => (
-        <button key={i} onClick={() => {
-          console.log('Click en película:', movie.name);
-          setPlaying(movie);
-        }} className="group flex flex-col gap-2 text-left">
-          <div className="relative aspect-[2/3] rounded-xl overflow-hidden bg-white/5 border border-white/10 group-hover:border-orange-500/50 transition-all">
-            {movie.logo
-              ? <img src={proxyUrl(movie.logo)} alt={movie.name} className="w-full h-full object-cover" onError={e => { e.target.style.display = 'none'; }} />
-              : <div className="absolute inset-0 flex items-center justify-center text-4xl">🎬</div>}
-            <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-all flex items-center justify-center">
-              <span className="opacity-0 group-hover:opacity-100 text-white text-3xl transition-opacity">▶</span>
-            </div>
-            {/* ✅ Botón favorito */}
-  <FavButton item={movie} type="movie" />
-
-          </div>
-          <span className="text-white text-xs line-clamp-2 leading-tight px-1">{movie.name}</span>
-        </button>
-      ))}
-      {filtered.length > visibleCount && (
-        <div className="col-span-full flex justify-center py-4">
-          <button onClick={() => setVisibleCount(v => v + 60)} className="bg-white/10 hover:bg-white/20 text-white px-8 py-3 rounded-xl transition-colors text-sm">
-            Cargar más ({filtered.length - visibleCount} restantes)
+      <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
+        <h1 className="text-xl font-bold text-white">🎬 Películas <span className="text-white/30 text-sm font-normal ml-2">{filtered.length} títulos</span></h1>
+        <input type="text" placeholder="Buscar película..." value={search} onChange={e => setSearch(e.target.value)}
+          className="bg-white/10 text-white placeholder-white/40 px-4 py-2 rounded-xl outline-none focus:ring-2 focus:ring-orange-500 w-64" />
+      </div>
+      <div className="flex gap-2 overflow-x-auto pb-2 mb-4">
+        {genres.map(genre => (
+          <button key={genre} onClick={() => setActiveGenre(genre)}
+            className={`px-4 py-1.5 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${activeGenre === genre ? 'bg-orange-500 text-white' : 'bg-white/10 text-white/60 hover:bg-white/20'}`}>
+            {genre}
           </button>
-        </div>
-      )}
+        ))}
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+        {visible.map((movie, i) => (
+          <button key={i} onClick={() => setPlaying(movie)} className="group flex flex-col gap-2 text-left">
+            <div className="relative aspect-[2/3] rounded-xl overflow-hidden bg-white/5 border border-white/10 group-hover:border-orange-500/50 transition-all">
+              {movie.logo
+                ? <img src={proxyUrl(movie.logo)} alt={movie.name} className="w-full h-full object-cover" onError={e => { e.target.style.display = 'none'; }} />
+                : <div className="absolute inset-0 flex items-center justify-center text-4xl">🎬</div>}
+              <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-all flex items-center justify-center">
+                <span className="opacity-0 group-hover:opacity-100 text-white text-3xl transition-opacity">▶</span>
+              </div>
+              <FavButton item={movie} type="movie" />
+            </div>
+            <span className="text-white text-xs line-clamp-2 leading-tight px-1">{movie.name}</span>
+          </button>
+        ))}
+        {filtered.length > visibleCount && (
+          <div className="col-span-full flex justify-center py-4">
+            <button onClick={() => setVisibleCount(v => v + 60)} className="bg-white/10 hover:bg-white/20 text-white px-8 py-3 rounded-xl transition-colors text-sm">
+              Cargar más ({filtered.length - visibleCount} restantes)
+            </button>
+          </div>
+        )}
+      </div>
+      {filtered.length === 0 && <p className="text-white/40 text-center mt-12">No se encontraron películas</p>}
     </div>
-    {filtered.length === 0 && <p className="text-white/40 text-center mt-12">No se encontraron películas</p>}
-  </div>
-);
+  );
 }
