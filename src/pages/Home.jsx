@@ -42,8 +42,11 @@ function Player({ channel, onClose }) {
   if (!channel || !videoRef.current) return;
   const video = videoRef.current;
 
+  const PROXY_URL = import.meta.env.DEV 
+  ? 'http://localhost:3001' 
+  : 'https://myconnect-web-production.up.railway.app';
   // ✅ ffmpeg maneja redirects, .ts y .m3u8 nativamente
-  const proxiedUrl = `/api/proxy?url=${encodeURIComponent(channel.url)}&transcode=true`;
+  const proxiedUrl = `${PROXY_URL}/api/proxy?url=${encodeURIComponent(channel.url)}&live=true`;
   video.src = proxiedUrl;
   video.load();
   video.play().catch(() => {});

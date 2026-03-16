@@ -45,7 +45,10 @@ function Player({ movie, onClose }) {
     // Usamos el proxy para evitar CORS y src directo en el video
     // En el Player de Movies.jsx
 // En el Player de cada archivo
-const proxiedUrl = `/api/proxy?url=${encodeURIComponent(movie.url)}`;
+const PROXY_URL = import.meta.env.DEV 
+  ? 'http://localhost:3001' 
+  : 'https://myconnect-web-production.up.railway.app';
+const proxiedUrl = `${PROXY_URL}/api/proxy?url=${encodeURIComponent(movie.url)}&transcode=true`;
 video.src = proxiedUrl;
     video.load();
     video.play().catch(() => {});

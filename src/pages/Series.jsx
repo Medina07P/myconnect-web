@@ -52,8 +52,11 @@ function Player({ episode, onClose }) {
   useEffect(() => {
   if (!episode || !videoRef.current) return;
   const video = videoRef.current;
+  const PROXY_URL = import.meta.env.DEV 
+  ? 'http://localhost:3001' 
+  : 'https://myconnect-web-production.up.railway.app';
   // ✅ transcode=true → ffmpeg convierte H.265 → H.264 al vuelo
-  const proxiedUrl = `/api/proxy?url=${encodeURIComponent(episode.url)}&transcode=true`;
+  const proxiedUrl = `${PROXY_URL}/api/proxy?url=${encodeURIComponent(episode.url)}&transcode=true`;
   video.src = proxiedUrl;
   video.load();
   video.play().catch(() => {});
