@@ -87,53 +87,28 @@ const server = http.createServer((req, res) => {
 
       // ✅ Si ya es H.264 — proxy directo con soporte de Range
       if (codec === 'h264') {
-        console.log('→ H.264 detectado — proxy directo');
-        const headers = {
-          'User-Agent': 'Mozilla/5.0',
-          'Accept': '*/*',
-        };
-        if (req.headers.range) headers['Range'] = req.headers.range;
-
-        const makeDirectRequest = (reqUrl) => {
-          let parsedUrl;
-          try { parsedUrl = new URL(reqUrl); } catch (e) {
-            res.writeHead(400); res.end('Invalid URL'); return;
-          }
-          const client = parsedUrl.protocol === 'https:' ? https : http;
-          const proxyReq = client.request({
-            hostname: parsedUrl.hostname,
-            port: parsedUrl.port || 80,
-            path: parsedUrl.pathname + parsedUrl.search,
-            method: 'GET',
-            headers,
-          }, (proxyRes) => {
-            if (proxyRes.statusCode === 301 || proxyRes.statusCode === 302) {
-              let location = proxyRes.headers.location;
-              proxyRes.resume();
-              if (location.startsWith('/')) {
-                const port = parsedUrl.port ? `:${parsedUrl.port}` : '';
-                location = `${parsedUrl.protocol}//${parsedUrl.hostname}${port}${location}`;
-              }
-              makeDirectRequest(location);
-              return;
-            }
-            const responseHeaders = {
-              'Access-Control-Allow-Origin': '*',
-              'Content-Type': proxyRes.headers['content-type'] || 'video/mp4',
-            };
-            if (proxyRes.headers['content-range']) responseHeaders['Content-Range'] = proxyRes.headers['content-range'];
-            if (proxyRes.headers['content-length']) responseHeaders['Content-Length'] = proxyRes.headers['content-length'];
-            if (proxyRes.headers['accept-ranges']) responseHeaders['Accept-Ranges'] = 'bytes';
-            res.writeHead(proxyRes.statusCode, responseHeaders);
-            proxyRes.pipe(res);
-          });
-          proxyReq.on('error', e => { if (!res.headersSent) { res.writeHead(500); res.end(e.message); } });
-          proxyReq.end();
-        };
-
-        makeDirectRequest(targetUrl);
-        return;
-      }
+  console.log('→ H.264 — copia video, convierte audio');
+  res.writeHead(200, {
+    'Content-Type': 'video/mp4',
+    'Access-Control-Allow-Origin': '*',
+    'Transfer-Encoding': 'chunked',
+  });
+  const ffmpeg = spawn('ffmpeg', [
+    '-i', targetUrl,
+    '-c:v', 'copy',
+    '-c:a', 'aac',
+    '-b:a', '128k',
+    '-movflags', 'frag_keyframe+empty_moov',
+    '-f', 'mp4',
+    'pipe:1',
+  ], { stdio: ['ignore', 'pipe', 'pipe'] });
+  ffmpeg.stdout.pipe(res);
+  ffmpeg.stderr.on('data', () => process.stdout.write('.'));
+  ffmpeg.on('error', e => console.error('ffmpeg error:', e.message));
+  req.on('close', () => ffmpeg.kill('SIGKILL'));
+  res.on('close', () => ffmpeg.kill('SIGKILL'));
+  return;
+}
 
       // ✅ H.265 o desconocido — transcodificar
       console.log('→ Transcoding H.265 → H.264');
