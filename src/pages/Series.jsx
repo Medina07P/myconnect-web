@@ -7,6 +7,7 @@ import SubscriptionWall from '../components/SubscriptionWall';
 import { fetchM3U } from '../services/fetchM3U';
 import { proxyUrl } from '../services/proxy';
 import { saveProgress, getProgress, getAllProgress } from '../services/progressService';
+import { addFavorite, removeFavorite, isFavorite } from '../services/favoritesService';
 
 function parseM3USeries(text) {
   const lines = text.split('\n');

@@ -43,7 +43,8 @@ function FavButton({ item, type }) {
   }, [item.url]);
 
   const toggle = async (e) => {
-    e.stopPropagation(); // no abrir el player
+    e.stopPropagation();
+    e.preventDefault();
     if (fav) {
       await removeFavorite(item.url);
       setFav(false);
@@ -54,12 +55,13 @@ function FavButton({ item, type }) {
   };
 
   return (
-    <button
+    <div
       onClick={toggle}
-      className="absolute top-2 right-2 z-10 w-8 h-8 flex items-center justify-center rounded-full bg-black/50 hover:bg-black/80 transition-colors"
+      role="button"
+      className="absolute top-2 right-2 z-10 w-8 h-8 flex items-center justify-center rounded-full bg-black/50 hover:bg-black/80 transition-colors cursor-pointer"
     >
       <span className="text-lg">{fav ? '❤️' : '🤍'}</span>
-    </button>
+    </div>
   );
 }
 
