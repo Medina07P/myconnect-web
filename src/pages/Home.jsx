@@ -34,9 +34,10 @@ function parseM3U(text) {
   return channels.filter(c => c.url && c.name);
 }
 
+
 function Player({ channel, onClose, channels, onChannelChange }) {
   const [videoEl, setVideoEl] = useState(null);
-  const currentIndex = channels.findIndex(c => c.url === channel.url);
+  const currentIndex = channel ? channels.findIndex(c => c.url === channel.url) : -1;
 
   useEffect(() => {
     if (!channel || !videoEl) return;
