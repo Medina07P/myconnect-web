@@ -42,9 +42,9 @@ function Player({ channel, onClose }) {
   if (!channel || !videoRef.current) return;
   const video = videoRef.current;
 
-  const PROXY_URL = import.meta.env.DEV 
-  ? 'http://localhost:3001' 
-  : 'https://myconnect-web-production.up.railway.app';
+  const PROXY_URL = import.meta.env.DEV
+  ? 'http://localhost:3001'
+  : 'https://myconnect-web.onrender.com';
   // ✅ ffmpeg maneja redirects, .ts y .m3u8 nativamente
   const proxiedUrl = `${PROXY_URL}/api/proxy?url=${encodeURIComponent(channel.url)}&live=true`;
   video.src = proxiedUrl;

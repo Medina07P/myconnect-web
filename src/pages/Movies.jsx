@@ -41,8 +41,8 @@ function Player({ movie, onClose }) {
     if (!movie || !videoEl) return;
 
     const PROXY_URL = import.meta.env.DEV
-      ? 'http://localhost:3001'
-      : 'https://myconnect-web-production.up.railway.app';
+  ? 'http://localhost:3001'
+  : 'https://myconnect-web.onrender.com';
 
     const proxiedUrl = `${PROXY_URL}/api/proxy?url=${encodeURIComponent(movie.url)}&transcode=true`;
     console.log('Reproduciendo:', proxiedUrl);
