@@ -34,42 +34,42 @@ const server = http.createServer((req, res) => {
 
   // ── LIVE STREAM ──────────────────────────────────────────────
   if (live) {
-  console.log(`→ Live: ${targetUrl}`);
+    console.log(`→ Live: ${targetUrl}`);
 
-  res.writeHead(200, {
-    'Content-Type': 'video/mp4',
-    'Access-Control-Allow-Origin': '*',
-    'Transfer-Encoding': 'chunked',
-    'Cache-Control': 'no-cache',
-  });
+    res.writeHead(200, {
+      'Content-Type': 'video/mp4',
+      'Access-Control-Allow-Origin': '*',
+      'Transfer-Encoding': 'chunked',
+      'Cache-Control': 'no-cache',
+    });
 
-  const ffmpeg = spawn('ffmpeg', [
-    '-i', targetUrl,
-    '-c:v', 'copy',
-    '-c:a', 'aac',
-    '-b:a', '128k',
-    '-movflags', 'frag_keyframe+empty_moov',
-    '-f', 'mp4',
-    'pipe:1',
-  ], { stdio: ['ignore', 'pipe', 'pipe'] });
+    const ffmpeg = spawn('ffmpeg', [
+      '-i', targetUrl,
+      '-c:v', 'copy',
+      '-c:a', 'aac',
+      '-b:a', '128k',
+      '-movflags', 'frag_keyframe+empty_moov',
+      '-f', 'mp4',
+      'pipe:1',
+    ], { stdio: ['ignore', 'pipe', 'pipe'] });
 
-  ffmpeg.stdout.pipe(res);
-  ffmpeg.stderr.on('data', () => process.stdout.write('.'));
-  ffmpeg.on('error', (e) => console.error('ffmpeg live error:', e.message));
-  req.on('close', () => ffmpeg.kill('SIGKILL'));
-  res.on('close', () => ffmpeg.kill('SIGKILL'));
-  return;
-}
+    ffmpeg.stdout.pipe(res);
+    ffmpeg.stderr.on('data', () => process.stdout.write('.'));
+    ffmpeg.on('error', (e) => console.error('ffmpeg live error:', e.message));
+    req.on('close', () => ffmpeg.kill('SIGKILL'));
+    res.on('close', () => ffmpeg.kill('SIGKILL'));
+    return;
+  }
 
-  // ── TRANSCODE VOD ─────────────────────────────────────────────
+  // ── TRANSCODE VOD (con soporte de seek) ───────────────────────
   if (transcode) {
-    console.log(`→ Checking codec: ${targetUrl}`);
+    console.log(`→ Probing: ${targetUrl}`);
 
     const ffprobe = spawn('ffprobe', [
       '-v', 'quiet',
       '-print_format', 'json',
       '-show_streams',
-      '-select_streams', 'v:0',
+      '-show_format',
       targetUrl,
     ]);
 
@@ -78,64 +78,96 @@ const server = http.createServer((req, res) => {
 
     ffprobe.on('close', () => {
       let codec = 'hevc';
+      let duration = 0;
+      let bitrate = 0;
+
       try {
         const info = JSON.parse(probeData);
-        codec = info.streams?.[0]?.codec_name || 'hevc';
+        const videoStream = info.streams?.find(s => s.codec_type === 'video');
+        codec = videoStream?.codec_name || 'hevc';
+        duration = parseFloat(info.format?.duration || 0);
+        bitrate = parseInt(info.format?.bit_rate || 0);
       } catch (_) {}
 
-      console.log(`→ Codec: ${codec}`);
+      console.log(`→ Codec: ${codec} | Duración: ${duration.toFixed(1)}s | Bitrate: ${bitrate}`);
 
-      // ✅ Si ya es H.264 — proxy directo con soporte de Range
+      // Estimar tamaño de salida para mapear byte-offset → tiempo
+      // h264 copy: bitrate original + 128k audio
+      // h265/otro: ~1.5 Mbps video (ultrafast crf30) + 96k audio
+      const outputBps = codec === 'h264'
+        ? (bitrate > 0 ? bitrate : 2000000) + 128000
+        : 1700000;
+      const estimatedSize = duration > 0 ? Math.floor((outputBps / 8) * duration) : 0;
+
+      // Parsear Range header → calcular startTime
+      let startTime = 0;
+      let rangeStart = 0;
+      let rangeEnd = estimatedSize > 0 ? estimatedSize - 1 : 0;
+      let isRangeRequest = false;
+
+      if (req.headers.range && estimatedSize > 0 && duration > 0) {
+        const match = req.headers.range.match(/bytes=(\d+)-(\d*)/);
+        if (match) {
+          rangeStart = parseInt(match[1]);
+          rangeEnd = match[2]
+            ? Math.min(parseInt(match[2]), estimatedSize - 1)
+            : estimatedSize - 1;
+          startTime = (rangeStart / estimatedSize) * duration;
+          isRangeRequest = true;
+          console.log(`→ Seek: byte ${rangeStart}/${estimatedSize} → ${startTime.toFixed(1)}s`);
+        }
+      }
+
+      // Construir args de ffmpeg
+      // -ss ANTES de -i = fast seek (por keyframe, mucho más rápido)
+      const ffmpegArgs = ['-ss', startTime.toFixed(3), '-i', targetUrl];
+
       if (codec === 'h264') {
-  console.log('→ H.264 — copia video, convierte audio');
-  res.writeHead(200, {
-    'Content-Type': 'video/mp4',
-    'Access-Control-Allow-Origin': '*',
-    'Transfer-Encoding': 'chunked',
-  });
-  const ffmpeg = spawn('ffmpeg', [
-    '-i', targetUrl,
-    '-c:v', 'copy',
-    '-c:a', 'aac',
-    '-b:a', '128k',
-    '-movflags', 'frag_keyframe+empty_moov',
-    '-f', 'mp4',
-    'pipe:1',
-  ], { stdio: ['ignore', 'pipe', 'pipe'] });
-  ffmpeg.stdout.pipe(res);
-  ffmpeg.stderr.on('data', () => process.stdout.write('.'));
-  ffmpeg.on('error', e => console.error('ffmpeg error:', e.message));
-  req.on('close', () => ffmpeg.kill('SIGKILL'));
-  res.on('close', () => ffmpeg.kill('SIGKILL'));
-  return;
-}
+        console.log('→ H.264: copy video + AAC audio');
+        ffmpegArgs.push('-c:v', 'copy');
+      } else {
+        console.log('→ Transcoding H.265 → H.264');
+        ffmpegArgs.push(
+          '-c:v', 'libx264',
+          '-preset', 'ultrafast',
+          '-tune', 'zerolatency',
+          '-crf', '30',
+          '-vf', 'scale=1280:720',
+          '-g', '30',
+        );
+      }
 
-      // ✅ H.265 o desconocido — transcodificar
-      console.log('→ Transcoding H.265 → H.264');
-      res.writeHead(200, {
-        'Content-Type': 'video/mp4',
-        'Access-Control-Allow-Origin': '*',
-        'Transfer-Encoding': 'chunked',
-      });
-
-      const ffmpeg = spawn('ffmpeg', [
-        '-i', targetUrl,
-        '-c:v', 'libx264',
-        '-preset', 'ultrafast',
-        '-tune', 'zerolatency',
-        '-crf', '30',
-        '-vf', 'scale=1280:720',
+      ffmpegArgs.push(
         '-c:a', 'aac',
-        '-b:a', '96k',
-        '-g', '30',
+        '-b:a', codec === 'h264' ? '128k' : '96k',
         '-movflags', 'frag_keyframe+empty_moov',
         '-f', 'mp4',
         'pipe:1',
-      ], { stdio: ['ignore', 'pipe', 'pipe'] });
+      );
 
+      // Headers de respuesta
+      const responseHeaders = {
+        'Content-Type': 'video/mp4',
+        'Access-Control-Allow-Origin': '*',
+        'Accept-Ranges': 'bytes',
+        'Cache-Control': 'no-cache',
+      };
+
+      if (isRangeRequest) {
+        responseHeaders['Content-Range'] = `bytes ${rangeStart}-${rangeEnd}/${estimatedSize}`;
+        res.writeHead(206, responseHeaders);
+      } else {
+        // En la primera carga enviamos el tamaño estimado para que el seek bar aparezca
+        if (estimatedSize > 0) {
+          responseHeaders['Content-Length'] = estimatedSize.toString();
+        }
+        res.writeHead(200, responseHeaders);
+      }
+
+      const ffmpeg = spawn('ffmpeg', ffmpegArgs, { stdio: ['ignore', 'pipe', 'pipe'] });
       ffmpeg.stdout.pipe(res);
       ffmpeg.stderr.on('data', () => process.stdout.write('.'));
-      ffmpeg.on('error', (e) => {
+      ffmpeg.on('error', e => {
         if (!e.message.includes('socket hang up')) console.error('ffmpeg error:', e.message);
       });
       req.on('close', () => ffmpeg.kill('SIGKILL'));
@@ -143,10 +175,12 @@ const server = http.createServer((req, res) => {
     });
 
     ffprobe.on('error', () => {
+      // Fallback si ffprobe falla: transcode sin seek
+      console.log('→ ffprobe falló, transcoding sin seek');
       res.writeHead(200, {
         'Content-Type': 'video/mp4',
         'Access-Control-Allow-Origin': '*',
-        'Transfer-Encoding': 'chunked',
+        'Accept-Ranges': 'bytes',
       });
       const ffmpeg = spawn('ffmpeg', [
         '-i', targetUrl,
