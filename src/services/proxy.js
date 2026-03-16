@@ -4,7 +4,6 @@ const PROXY_URL = import.meta.env.DEV
 
 export const proxyUrl = (url) => {
   if (!url) return '';
-  // ✅ Si la URL es HTTP, pásala por el proxy para evitar Mixed Content
   if (url.startsWith('http://')) {
     return `${PROXY_URL}/api/proxy?url=${encodeURIComponent(url)}`;
   }
