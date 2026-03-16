@@ -34,8 +34,9 @@ function parseM3U(text) {
   return channels.filter(c => c.url && c.name);
 }
 
-function Player({ channel, onClose }) {
+function Player({ channel, onClose, channels, onChannelChange }) {
   const [videoEl, setVideoEl] = useState(null);
+  const currentIndex = channels.findIndex(c => c.url === channel.url);
 
   useEffect(() => {
     if (!channel || !videoEl) return;
@@ -45,7 +46,6 @@ function Player({ channel, onClose }) {
       : 'https://myconnect-web.onrender.com';
 
     const proxiedUrl = `${PROXY_URL}/api/proxy?url=${encodeURIComponent(channel.url)}&live=true`;
-    console.log('Reproduciendo canal:', proxiedUrl);
     videoEl.src = proxiedUrl;
     videoEl.load();
     videoEl.play().catch(() => {});
@@ -61,11 +61,27 @@ function Player({ channel, onClose }) {
     <div className="fixed inset-0 bg-black z-50 flex flex-col">
       <div className="flex items-center justify-between px-4 py-3 bg-black/80">
         <div className="flex items-center gap-3">
-          {channel.logo && <img src={proxyUrl(channel.logo)} alt="" className="w-8 h-8 object-contain rounded" />}
+          {channel.logo && (
+            <img src={proxyUrl(channel.logo)} alt="" className="w-8 h-8 object-contain rounded"
+              onError={e => { e.target.style.display = 'none'; }} />
+          )}
           <span className="text-white font-bold">{channel.name}</span>
           <span className="bg-red-600 text-white text-xs px-2 py-0.5 rounded-full font-bold animate-pulse">EN VIVO</span>
         </div>
-        <button onClick={onClose} className="text-white/60 hover:text-white text-2xl px-2">✕</button>
+        <div className="flex items-center gap-2">
+          {/* ✅ Botones anterior/siguiente */}
+          <button
+            onClick={() => currentIndex > 0 && onChannelChange(channels[currentIndex - 1])}
+            disabled={currentIndex === 0}
+            className="text-white/60 hover:text-white disabled:opacity-30 px-2 text-xl"
+          >⬆</button>
+          <button
+            onClick={() => currentIndex < channels.length - 1 && onChannelChange(channels[currentIndex + 1])}
+            disabled={currentIndex === channels.length - 1}
+            className="text-white/60 hover:text-white disabled:opacity-30 px-2 text-xl"
+          >⬇</button>
+          <button onClick={onClose} className="text-white/60 hover:text-white text-2xl px-2">✕</button>
+        </div>
       </div>
       <video ref={setVideoEl} className="flex-1 w-full bg-black" controls autoPlay playsInline />
     </div>
@@ -122,7 +138,12 @@ export default function Home() {
 
   return (
     <div className="p-4 max-w-7xl mx-auto">
-      <Player channel={playing} onClose={() => setPlaying(null)} />
+      <Player
+  channel={playing}
+  onClose={() => setPlaying(null)}
+  channels={filtered}
+  onChannelChange={setPlaying}
+/>
       <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
         <h1 className="text-xl font-bold text-white">
           📺 En Vivo
