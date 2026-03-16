@@ -91,21 +91,20 @@ const server = http.createServer((req, res) => {
 
       res.writeHead(200, responseHeaders);
 
-      const ffmpeg = spawn('ffmpeg', [
-        '-re',
-        '-i', targetUrl,
-        '-c:v', 'libx264',
-        '-preset', 'ultrafast',
-        '-tune', 'zerolatency',
-        '-crf', '30',
-        '-vf', 'scale=1280:720',
-        '-c:a', 'aac',
-        '-b:a', '96k',
-        '-g', '30',
-        '-movflags', 'frag_keyframe+empty_moov+faststart',
-        '-f', 'mp4',
-        'pipe:1',
-      ], { stdio: ['ignore', 'pipe', 'pipe'] });
+     const ffmpeg = spawn('ffmpeg', [
+  '-i', targetUrl,          // ✅ quita -re para que empiece más rápido
+  '-c:v', 'libx264',
+  '-preset', 'ultrafast',
+  '-tune', 'zerolatency',
+  '-crf', '30',
+  '-vf', 'scale=1280:720',
+  '-c:a', 'aac',
+  '-b:a', '96k',
+  '-g', '30',
+  '-movflags', 'frag_keyframe+empty_moov', // ✅ quita faststart
+  '-f', 'mp4',
+  'pipe:1',
+], { stdio: ['ignore', 'pipe', 'pipe'] });
 
       ffmpeg.stdout.pipe(res);
       ffmpeg.stderr.on('data', () => process.stdout.write('.'));
