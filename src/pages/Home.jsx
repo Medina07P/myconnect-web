@@ -6,7 +6,6 @@ import { useSubscription } from '../hooks/useSubscription';
 import SubscriptionWall from '../components/SubscriptionWall';
 import { fetchM3U } from '../services/fetchM3U';
 import { proxyUrl } from '../services/proxy';
-import Hls from 'hls.js';
 
 function parseM3U(text) {
   const lines = text.split('\n');
@@ -47,39 +46,11 @@ function Player({ channel, onClose }) {
 
     const proxiedUrl = `${PROXY_URL}/api/proxy?url=${encodeURIComponent(channel.url)}&live=true`;
     console.log('Reproduciendo canal:', proxiedUrl);
-
-    let hls = null;
-
-    // ✅ Intenta con HLS.js primero
-    if (Hls.isSupported()) {
-      hls = new Hls({
-        maxBufferLength: 10,
-        enableWorker: true,
-      });
-      hls.loadSource(proxiedUrl);
-      hls.attachMedia(videoEl);
-      hls.on(Hls.Events.MANIFEST_PARSED, () => {
-        videoEl.play().catch(() => {});
-      });
-      hls.on(Hls.Events.ERROR, (_, data) => {
-        if (data.fatal) {
-          console.warn('HLS error, intentando video directo');
-          hls.destroy();
-          hls = null;
-          videoEl.src = proxiedUrl;
-          videoEl.load();
-          videoEl.play().catch(() => {});
-        }
-      });
-    } else {
-      // Safari — reproducción nativa
-      videoEl.src = proxiedUrl;
-      videoEl.load();
-      videoEl.play().catch(() => {});
-    }
+    videoEl.src = proxiedUrl;
+    videoEl.load();
+    videoEl.play().catch(() => {});
 
     return () => {
-      if (hls) hls.destroy();
       videoEl.pause();
       videoEl.src = '';
     };

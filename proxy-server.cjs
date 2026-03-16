@@ -34,31 +34,32 @@ const server = http.createServer((req, res) => {
 
   // ── LIVE STREAM ──────────────────────────────────────────────
   if (live) {
-    console.log(`→ Live: ${targetUrl}`);
+  console.log(`→ Live: ${targetUrl}`);
 
-    res.writeHead(200, {
-      'Content-Type': 'video/mp2t',
-      'Access-Control-Allow-Origin': '*',
-      'Transfer-Encoding': 'chunked',
-      'Cache-Control': 'no-cache',
-    });
+  res.writeHead(200, {
+    'Content-Type': 'video/mp4',
+    'Access-Control-Allow-Origin': '*',
+    'Transfer-Encoding': 'chunked',
+    'Cache-Control': 'no-cache',
+  });
 
-    const ffmpeg = spawn('ffmpeg', [
-      '-i', targetUrl,
-      '-c:v', 'copy',
-      '-c:a', 'aac',
-      '-b:a', '128k',
-      '-f', 'mpegts',
-      'pipe:1',
-    ], { stdio: ['ignore', 'pipe', 'pipe'] });
+  const ffmpeg = spawn('ffmpeg', [
+    '-i', targetUrl,
+    '-c:v', 'copy',
+    '-c:a', 'aac',
+    '-b:a', '128k',
+    '-movflags', 'frag_keyframe+empty_moov',
+    '-f', 'mp4',
+    'pipe:1',
+  ], { stdio: ['ignore', 'pipe', 'pipe'] });
 
-    ffmpeg.stdout.pipe(res);
-    ffmpeg.stderr.on('data', () => process.stdout.write('.'));
-    ffmpeg.on('error', (e) => console.error('ffmpeg live error:', e.message));
-    req.on('close', () => ffmpeg.kill('SIGKILL'));
-    res.on('close', () => ffmpeg.kill('SIGKILL'));
-    return;
-  }
+  ffmpeg.stdout.pipe(res);
+  ffmpeg.stderr.on('data', () => process.stdout.write('.'));
+  ffmpeg.on('error', (e) => console.error('ffmpeg live error:', e.message));
+  req.on('close', () => ffmpeg.kill('SIGKILL'));
+  res.on('close', () => ffmpeg.kill('SIGKILL'));
+  return;
+}
 
   // ── TRANSCODE VOD ─────────────────────────────────────────────
   if (transcode) {
