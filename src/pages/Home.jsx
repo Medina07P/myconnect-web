@@ -35,27 +35,26 @@ function parseM3U(text) {
 }
 
 function Player({ channel, onClose }) {
-  const videoRef = useRef(null);
-  const hlsRef = useRef(null);
+  const [videoEl, setVideoEl] = useState(null);
 
   useEffect(() => {
-  if (!channel || !videoRef.current) return;
-  const video = videoRef.current;
+    if (!channel || !videoEl) return;
 
-  const PROXY_URL = import.meta.env.DEV
-  ? 'http://localhost:3001'
-  : 'https://myconnect-web.onrender.com';
-  // ✅ ffmpeg maneja redirects, .ts y .m3u8 nativamente
-  const proxiedUrl = `${PROXY_URL}/api/proxy?url=${encodeURIComponent(channel.url)}&live=true`;
-  video.src = proxiedUrl;
-  video.load();
-  video.play().catch(() => {});
+    const PROXY_URL = import.meta.env.DEV
+      ? 'http://localhost:3001'
+      : 'https://myconnect-web.onrender.com';
 
-  return () => {
-    video.pause();
-    video.src = '';
-  };
-}, [channel]);
+    const proxiedUrl = `${PROXY_URL}/api/proxy?url=${encodeURIComponent(channel.url)}&live=true`;
+    console.log('Reproduciendo canal:', proxiedUrl);
+    videoEl.src = proxiedUrl;
+    videoEl.load();
+    videoEl.play().catch(() => {});
+
+    return () => {
+      videoEl.pause();
+      videoEl.src = '';
+    };
+  }, [channel, videoEl]);
 
   if (!channel) return null;
   return (
@@ -68,7 +67,7 @@ function Player({ channel, onClose }) {
         </div>
         <button onClick={onClose} className="text-white/60 hover:text-white text-2xl px-2">✕</button>
       </div>
-      <video ref={videoRef} className="flex-1 w-full bg-black" controls autoPlay playsInline />
+      <video ref={setVideoEl} className="flex-1 w-full bg-black" controls autoPlay playsInline />
     </div>
   );
 }

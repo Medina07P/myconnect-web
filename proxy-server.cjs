@@ -88,9 +88,7 @@ const server = http.createServer((req, res) => {
   ffmpeg.stdout.pipe(res);
   ffmpeg.stderr.on('data', () => process.stdout.write('.'));
   ffmpeg.on('error', (e) => {
-    if (!e.message.includes('socket hang up')) {
-      console.error('ffmpeg error:', e.message);
-    }
+    if (!e.message.includes('socket hang up')) console.error('ffmpeg error:', e.message);
   });
   req.on('close', () => ffmpeg.kill('SIGKILL'));
   res.on('close', () => ffmpeg.kill('SIGKILL'));
