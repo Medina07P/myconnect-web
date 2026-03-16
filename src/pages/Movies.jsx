@@ -6,6 +6,7 @@ import { useSubscription } from '../hooks/useSubscription';
 import SubscriptionWall from '../components/SubscriptionWall';
 import { fetchM3U } from '../services/fetchM3U';
 import { proxyUrl } from '../services/proxy';
+import { useState, useEffect, useRef } from 'react';
 
 function parseM3UMovies(text) {
   const lines = text.split('\n');
@@ -35,29 +36,26 @@ function parseM3UMovies(text) {
 }
 
 function Player({ movie, onClose }) {
-  const videoRef = useRef(null);
+  const [videoEl, setVideoEl] = useState(null);
 
   useEffect(() => {
-    if (!movie || !videoRef.current) return;
-    const video = videoRef.current;
+    if (!movie || !videoEl) return;
 
-    // ✅ Películas son .mkv/.avi/.mp4 — no son HLS
-    // Usamos el proxy para evitar CORS y src directo en el video
-    // En el Player de Movies.jsx
-// En el Player de cada archivo
-const PROXY_URL = import.meta.env.DEV 
-  ? 'http://localhost:3001' 
-  : 'https://myconnect-web-production.up.railway.app';
-const proxiedUrl = `${PROXY_URL}/api/proxy?url=${encodeURIComponent(movie.url)}&transcode=true`;
-video.src = proxiedUrl;
-    video.load();
-    video.play().catch(() => {});
+    const PROXY_URL = import.meta.env.DEV
+      ? 'http://localhost:3001'
+      : 'https://myconnect-web-production.up.railway.app';
+
+    const proxiedUrl = `${PROXY_URL}/api/proxy?url=${encodeURIComponent(movie.url)}&transcode=true`;
+    console.log('Reproduciendo:', proxiedUrl);
+    videoEl.src = proxiedUrl;
+    videoEl.load();
+    videoEl.play().catch(() => {});
 
     return () => {
-      video.pause();
-      video.src = '';
+      videoEl.pause();
+      videoEl.src = '';
     };
-  }, [movie]);
+  }, [movie, videoEl]);
 
   if (!movie) return null;
 
@@ -68,7 +66,7 @@ video.src = proxiedUrl;
         <button onClick={onClose} className="text-white/60 hover:text-white text-2xl px-2 flex-shrink-0">✕</button>
       </div>
       <video
-        ref={videoRef}
+        ref={setVideoEl}
         className="flex-1 w-full bg-black"
         controls
         autoPlay
