@@ -3,10 +3,8 @@ const PROXY_URL = import.meta.env.DEV
   : 'https://myconnect-web-production.up.railway.app';
 
 export const proxyUrl = (url) => {
-  if (!url) return '';
-  if (url.startsWith('http://')) {
-    return `${PROXY_URL}/api/proxy?url=${encodeURIComponent(url)}`;
-  }
+  // ✅ No proxear imágenes — solo streams de video
+  // Las imágenes que fallen mostrarán placeholder por onError
   return url;
 };
 
