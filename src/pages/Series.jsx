@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { doc, getDoc } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth, db } from '../services/firebase';
@@ -43,6 +43,16 @@ function groupBySeries(episodes) {
     groups[seriesName].episodes.push(ep);
   }
   return Object.values(groups);
+}
+
+function fmt(s) {
+  if (!s || isNaN(s) || s <= 0) return '0:00';
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = Math.floor(s % 60);
+  return h > 0
+    ? `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`
+    : `${m}:${String(sec).padStart(2, '0')}`;
 }
 
 function ContinueWatching({ onPlay }) {
@@ -110,44 +120,169 @@ function FavButton({ item, type }) {
 
 function Player({ episode, onClose }) {
   const [videoEl, setVideoEl] = useState(null);
+  const [duration, setDuration] = useState(0);
+  const [curTime, setCurTime] = useState(0);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [buffering, setBuffering] = useState(true);
+  const startTimeRef = useRef(0);
+  const durationRef = useRef(0);
+
+  const PROXY = import.meta.env.DEV ? 'http://localhost:3001' : 'https://myconnect-web.onrender.com';
+
+  const buildSrc = (start = 0) =>
+    `${PROXY}/api/proxy?url=${encodeURIComponent(episode.url)}&transcode=true&start=${start.toFixed(2)}`;
+
   useEffect(() => {
     if (!episode || !videoEl) return;
-    const PROXY_URL = import.meta.env.DEV ? 'http://localhost:3001' : 'https://myconnect-web.onrender.com';
-    const proxiedUrl = `${PROXY_URL}/api/proxy?url=${encodeURIComponent(episode.url)}&transcode=true`;
-    videoEl.src = proxiedUrl;
-    videoEl.load();
-    videoEl.onloadedmetadata = async () => {
+
+    // Fetch duration from probe endpoint
+    fetch(`${PROXY}/api/proxy?url=${encodeURIComponent(episode.url)}&probe=true`)
+      .then(r => r.json())
+      .then(d => {
+        const dur = d.duration || 0;
+        setDuration(dur);
+        durationRef.current = dur;
+      })
+      .catch(() => {});
+
+    // Restore progress and start video
+    const initVideo = async () => {
       const progress = await getProgress(episode.url);
-      if (progress && progress.currentTime > 10) {
-        const remaining = progress.duration - progress.currentTime;
-        if (remaining > 30) videoEl.currentTime = progress.currentTime;
-      }
+      const start = (progress && progress.currentTime > 10 && (progress.duration - progress.currentTime) > 30)
+        ? progress.currentTime : 0;
+      startTimeRef.current = start;
+      setCurTime(start);
+      videoEl.src = buildSrc(start);
+      videoEl.load();
       videoEl.play().catch(() => {});
     };
+    initVideo();
+
+    const onTimeUpdate = () => setCurTime(startTimeRef.current + (videoEl.currentTime || 0));
+    const onPlay = () => { setIsPlaying(true); setBuffering(false); };
+    const onPause = () => setIsPlaying(false);
+    const onWaiting = () => setBuffering(true);
+    const onCanPlay = () => setBuffering(false);
+
+    videoEl.addEventListener('timeupdate', onTimeUpdate);
+    videoEl.addEventListener('play', onPlay);
+    videoEl.addEventListener('pause', onPause);
+    videoEl.addEventListener('waiting', onWaiting);
+    videoEl.addEventListener('canplay', onCanPlay);
+
     const interval = setInterval(() => {
-      if (videoEl.currentTime > 0 && !videoEl.paused)
-        saveProgress(episode.url, episode.name, videoEl.currentTime, videoEl.duration || 0, 'series');
+      const realTime = startTimeRef.current + (videoEl.currentTime || 0);
+      if (realTime > 0 && !videoEl.paused)
+        saveProgress(episode.url, episode.name, realTime, durationRef.current, 'series');
     }, 5000);
-    videoEl.onpause = () => {
-      if (videoEl.currentTime > 0)
-        saveProgress(episode.url, episode.name, videoEl.currentTime, videoEl.duration || 0, 'series');
-    };
+
     return () => {
       clearInterval(interval);
-      if (videoEl.currentTime > 0)
-        saveProgress(episode.url, episode.name, videoEl.currentTime, videoEl.duration || 0, 'series');
-      videoEl.pause(); videoEl.src = '';
+      videoEl.removeEventListener('timeupdate', onTimeUpdate);
+      videoEl.removeEventListener('play', onPlay);
+      videoEl.removeEventListener('pause', onPause);
+      videoEl.removeEventListener('waiting', onWaiting);
+      videoEl.removeEventListener('canplay', onCanPlay);
+      const realTime = startTimeRef.current + (videoEl.currentTime || 0);
+      if (realTime > 0) saveProgress(episode.url, episode.name, realTime, durationRef.current, 'series');
+      videoEl.pause();
+      videoEl.src = '';
     };
   }, [episode, videoEl]);
 
+  const handleSeek = (e) => {
+    if (!durationRef.current) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    const seekTo = ratio * durationRef.current;
+    startTimeRef.current = seekTo;
+    setCurTime(seekTo);
+    setBuffering(true);
+    videoEl.src = buildSrc(seekTo);
+    videoEl.load();
+    videoEl.play().catch(() => {});
+  };
+
+  const togglePlay = () => {
+    if (!videoEl) return;
+    isPlaying ? videoEl.pause() : videoEl.play().catch(() => {});
+  };
+
+  const toggleFullscreen = () => {
+    const container = videoEl?.closest?.('.player-container');
+    if (!container) return;
+    document.fullscreenElement ? document.exitFullscreen() : container.requestFullscreen?.();
+  };
+
+  const progress = durationRef.current > 0 ? Math.min((curTime / durationRef.current) * 100, 100) : 0;
+
   if (!episode) return null;
+
   return (
-    <div className="fixed inset-0 bg-black z-50 flex flex-col">
-      <div className="flex items-center justify-between px-4 py-3 bg-black/80">
-        <span className="text-white font-bold truncate pr-4">{episode.name}</span>
+    <div className="player-container fixed inset-0 bg-black z-50 flex flex-col">
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 py-3 bg-gradient-to-b from-black/90 to-transparent absolute top-0 left-0 right-0 z-10">
+        <span className="text-white font-bold truncate pr-4 text-sm">{episode.name}</span>
         <button onClick={onClose} className="text-white/60 hover:text-white text-2xl px-2 flex-shrink-0">✕</button>
       </div>
-      <video ref={setVideoEl} className="flex-1 w-full bg-black" controls autoPlay playsInline />
+
+      {/* Video — sin controls nativos */}
+      <video
+        ref={setVideoEl}
+        className="flex-1 w-full bg-black cursor-pointer"
+        playsInline
+        onClick={togglePlay}
+      />
+
+      {/* Spinner de buffering */}
+      {buffering && (
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+          <div className="w-12 h-12 border-4 border-purple-500 border-t-transparent rounded-full animate-spin" />
+        </div>
+      )}
+
+      {/* Controles custom */}
+      <div className="bg-gradient-to-t from-black to-transparent px-4 pt-8 pb-4 flex flex-col gap-3">
+        {/* Barra de progreso */}
+        <div
+          className="w-full h-1.5 bg-white/20 rounded-full cursor-pointer relative group hover:h-2.5 transition-all"
+          onClick={handleSeek}
+        >
+          <div
+            className="h-full bg-purple-500 rounded-full pointer-events-none transition-none"
+            style={{ width: `${progress}%` }}
+          />
+          <div
+            className="absolute top-1/2 -translate-y-1/2 w-3.5 h-3.5 bg-white rounded-full shadow-lg pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity"
+            style={{ left: `calc(${progress}% - 7px)` }}
+          />
+        </div>
+
+        {/* Botones */}
+        <div className="flex items-center gap-3">
+          <button
+            onClick={togglePlay}
+            className="text-white w-8 h-8 flex items-center justify-center text-xl hover:text-purple-400 transition-colors"
+          >
+            {isPlaying ? '⏸' : '▶'}
+          </button>
+
+          <span className="text-white/70 text-sm tabular-nums select-none">
+            {fmt(curTime)}
+            {durationRef.current > 0 && <span className="text-white/40"> / {fmt(durationRef.current)}</span>}
+          </span>
+
+          <div className="flex-1" />
+
+          <button
+            onClick={toggleFullscreen}
+            className="text-white/60 hover:text-white text-lg transition-colors"
+            title="Pantalla completa"
+          >
+            ⛶
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
