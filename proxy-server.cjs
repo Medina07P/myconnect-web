@@ -311,7 +311,8 @@ if (live) {
   makeRequest(targetUrl);
 });
 
+
 const PORT = process.env.PORT || 3001;
-server.listen(PORT, () => {
+server.listen(PORT, '0.0.0.0', () => {
   console.log(`✅ Proxy server corriendo en http://localhost:${PORT}`);
 });
