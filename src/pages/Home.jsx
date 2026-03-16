@@ -5,8 +5,7 @@ import { auth, db } from '../services/firebase';
 import { useSubscription } from '../hooks/useSubscription';
 import SubscriptionWall from '../components/SubscriptionWall';
 import { fetchM3U } from '../services/fetchM3U';
-import Hls from 'hls.js';
-import { proxyUrl, PROXY_URL } from '../services/proxy';
+import { proxyUrl } from '../services/proxy';
 
 function parseM3U(text) {
   const lines = text.split('\n');
