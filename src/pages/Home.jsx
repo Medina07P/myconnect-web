@@ -6,7 +6,7 @@ import { useSubscription } from '../hooks/useSubscription';
 import SubscriptionWall from '../components/SubscriptionWall';
 import { fetchM3U } from '../services/fetchM3U';
 import { proxyUrl } from '../services/proxy';
-import { addFavorite, removeFavorite, isFavorite } from '../services/favoritesService';
+import { addFavorite, removeFavorite, isFavorite, getAllFavorites } from '../services/favoritesService';
 
 function parseM3U(text) {
   const lines = text.split('\n');
@@ -39,14 +39,14 @@ function FavButton({ item, type }) {
   const [fav, setFav] = useState(false);
 
   useEffect(() => {
-    isFavorite(item.url).then(setFav);
-  }, [item.url]);
+    isFavorite(item.url, type).then(setFav);
+  }, [item.url, type]);
 
   const toggle = async (e) => {
     e.stopPropagation();
     e.preventDefault();
     if (fav) {
-      await removeFavorite(item.url);
+      await removeFavorite(item.url, type);
       setFav(false);
     } else {
       await addFavorite({ ...item, type });
@@ -55,12 +55,37 @@ function FavButton({ item, type }) {
   };
 
   return (
-    <div
-      onClick={toggle}
-      role="button"
-      className="absolute top-2 right-2 z-10 w-8 h-8 flex items-center justify-center rounded-full bg-black/50 hover:bg-black/80 transition-colors cursor-pointer"
-    >
+    <div onClick={toggle} role="button"
+      className="absolute top-2 right-2 z-10 w-8 h-8 flex items-center justify-center rounded-full bg-black/50 hover:bg-black/80 transition-colors cursor-pointer">
       <span className="text-lg">{fav ? '❤️' : '🤍'}</span>
+    </div>
+  );
+}
+
+function FavoritesSection({ onPlay }) {
+  const [items, setItems] = useState([]);
+
+  useEffect(() => {
+    getAllFavorites('channel').then(setItems);
+  }, []);
+
+  if (items.length === 0) return null;
+
+  return (
+    <div className="mb-6">
+      <h2 className="text-white font-bold text-lg mb-3">❤️ Mis favoritos</h2>
+      <div className="flex gap-3 overflow-x-auto pb-2">
+        {items.map((item, i) => (
+          <div key={i} onClick={() => onPlay(item)} className="flex-shrink-0 w-24 text-left cursor-pointer group">
+            <div className="relative w-20 h-20 rounded-xl overflow-hidden bg-white/5 border border-white/10 group-hover:border-red-500/50 mb-1 flex items-center justify-center">
+              {item.logo
+                ? <img src={item.logo} alt={item.name} className="w-full h-full object-contain" onError={e => { e.target.style.display = 'none'; }} />
+                : <span className="text-2xl">📺</span>}
+            </div>
+            <span className="text-white text-xs line-clamp-2 leading-tight">{item.name}</span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -71,20 +96,12 @@ function Player({ channel, onClose, channels, onChannelChange }) {
 
   useEffect(() => {
     if (!channel || !videoEl) return;
-
-    const PROXY_URL = import.meta.env.DEV
-      ? 'http://localhost:3001'
-      : 'https://myconnect-web.onrender.com';
-
+    const PROXY_URL = import.meta.env.DEV ? 'http://localhost:3001' : 'https://myconnect-web.onrender.com';
     const proxiedUrl = `${PROXY_URL}/api/proxy?url=${encodeURIComponent(channel.url)}&live=true`;
     videoEl.src = proxiedUrl;
     videoEl.load();
     videoEl.play().catch(() => {});
-
-    return () => {
-      videoEl.pause();
-      videoEl.src = '';
-    };
+    return () => { videoEl.pause(); videoEl.src = ''; };
   }, [channel, videoEl]);
 
   if (!channel) return null;
@@ -92,25 +109,15 @@ function Player({ channel, onClose, channels, onChannelChange }) {
     <div className="fixed inset-0 bg-black z-50 flex flex-col">
       <div className="flex items-center justify-between px-4 py-3 bg-black/80">
         <div className="flex items-center gap-3">
-          {channel.logo && (
-            <img src={proxyUrl(channel.logo)} alt="" className="w-8 h-8 object-contain rounded"
-              onError={e => { e.target.style.display = 'none'; }} />
-          )}
+          {channel.logo && <img src={proxyUrl(channel.logo)} alt="" className="w-8 h-8 object-contain rounded" onError={e => { e.target.style.display = 'none'; }} />}
           <span className="text-white font-bold">{channel.name}</span>
           <span className="bg-red-600 text-white text-xs px-2 py-0.5 rounded-full font-bold animate-pulse">EN VIVO</span>
         </div>
         <div className="flex items-center gap-2">
-          {/* ✅ Botones anterior/siguiente */}
-          <button
-            onClick={() => currentIndex > 0 && onChannelChange(channels[currentIndex - 1])}
-            disabled={currentIndex === 0}
-            className="text-white/60 hover:text-white disabled:opacity-30 px-2 text-xl"
-          >⬆</button>
-          <button
-            onClick={() => currentIndex < channels.length - 1 && onChannelChange(channels[currentIndex + 1])}
-            disabled={currentIndex === channels.length - 1}
-            className="text-white/60 hover:text-white disabled:opacity-30 px-2 text-xl"
-          >⬇</button>
+          <button onClick={() => currentIndex > 0 && onChannelChange(channels[currentIndex - 1])} disabled={currentIndex === 0}
+            className="text-white/60 hover:text-white disabled:opacity-30 px-2 text-xl">⬆</button>
+          <button onClick={() => currentIndex < channels.length - 1 && onChannelChange(channels[currentIndex + 1])} disabled={currentIndex === channels.length - 1}
+            className="text-white/60 hover:text-white disabled:opacity-30 px-2 text-xl">⬇</button>
           <button onClick={onClose} className="text-white/60 hover:text-white text-2xl px-2">✕</button>
         </div>
       </div>
@@ -143,12 +150,8 @@ export default function Home() {
         setChannels(parsed);
         setFiltered(parsed);
         setGroups(['Todos', ...new Set(parsed.map(c => c.group))]);
-      } catch (e) {
-        console.error(e);
-        setError('Error al cargar los canales.');
-      } finally {
-        setLoading(false);
-      }
+      } catch (e) { console.error(e); setError('Error al cargar los canales.'); }
+      finally { setLoading(false); }
     });
     return unsubAuth;
   }, []);
@@ -169,17 +172,15 @@ export default function Home() {
 
   return (
     <div className="p-4 max-w-7xl mx-auto">
-      <Player
-  channel={playing}
-  onClose={() => setPlaying(null)}
-  channels={filtered}
-  onChannelChange={setPlaying}
-/>
+      <Player channel={playing} onClose={() => setPlaying(null)} channels={filtered} onChannelChange={setPlaying} />
+
+      <FavoritesSection onPlay={(item) => {
+        const ch = channels.find(c => c.url === item.url);
+        if (ch) setPlaying(ch);
+      }} />
+
       <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
-        <h1 className="text-xl font-bold text-white">
-          📺 En Vivo
-          <span className="text-white/30 text-sm font-normal ml-2">{filtered.length} canales</span>
-        </h1>
+        <h1 className="text-xl font-bold text-white">📺 En Vivo <span className="text-white/30 text-sm font-normal ml-2">{filtered.length} canales</span></h1>
         <input type="text" placeholder="Buscar canal..." value={search} onChange={e => setSearch(e.target.value)}
           className="bg-white/10 text-white placeholder-white/40 px-4 py-2 rounded-xl outline-none focus:ring-2 focus:ring-red-500 w-64" />
       </div>
@@ -194,14 +195,13 @@ export default function Home() {
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
         {visible.map((channel, i) => (
           <button key={i} onClick={() => setPlaying(channel)}
-  className="relative bg-white/5 hover:bg-white/10 border border-white/10 hover:border-red-500/50 rounded-xl p-3 flex flex-col items-center gap-2 transition-all">
-  {channel.logo
-    ? <img src={proxyUrl(channel.logo)} alt={channel.name} className="w-12 h-12 object-contain rounded-lg" onError={e => { e.target.style.display = 'none'; }} />
-    : <div className="w-12 h-12 bg-white/10 rounded-lg flex items-center justify-center text-2xl">📺</div>}
-  <span className="text-white text-xs text-center line-clamp-2 leading-tight">{channel.name}</span>
-  {/* ✅ Botón favorito */}
-  <FavButton item={channel} type="channel" />
-</button>
+            className="relative bg-white/5 hover:bg-white/10 border border-white/10 hover:border-red-500/50 rounded-xl p-3 flex flex-col items-center gap-2 transition-all">
+            {channel.logo
+              ? <img src={proxyUrl(channel.logo)} alt={channel.name} className="w-12 h-12 object-contain rounded-lg" onError={e => { e.target.style.display = 'none'; }} />
+              : <div className="w-12 h-12 bg-white/10 rounded-lg flex items-center justify-center text-2xl">📺</div>}
+            <span className="text-white text-xs text-center line-clamp-2 leading-tight">{channel.name}</span>
+            <FavButton item={channel} type="channel" />
+          </button>
         ))}
         {filtered.length > visibleCount && (
           <div className="col-span-full flex justify-center py-4">

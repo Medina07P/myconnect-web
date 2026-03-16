@@ -7,7 +7,7 @@ import SubscriptionWall from '../components/SubscriptionWall';
 import { fetchM3U } from '../services/fetchM3U';
 import { proxyUrl } from '../services/proxy';
 import { saveProgress, getProgress, getAllProgress } from '../services/progressService';
-import { addFavorite, removeFavorite, isFavorite } from '../services/favoritesService';
+import { addFavorite, removeFavorite, isFavorite, getAllFavorites } from '../services/favoritesService';
 
 function parseM3UMovies(text) {
   const lines = text.split('\n');
@@ -27,24 +27,16 @@ function parseM3UMovies(text) {
       const isImage = /\.(jpg|jpeg|png|gif|webp|svg|ico|bmp)(\?.*)?$/i.test(line);
       if (!isImage) { current.url = line; movies.push(current); }
       current = null;
-    } else if (line.startsWith('#')) {
-      continue;
-    } else {
-      current = null;
-    }
+    } else if (line.startsWith('#')) { continue; }
+    else { current = null; }
   }
   return movies.filter(m => m.url && m.name);
 }
 
 function ContinueWatching({ onPlay }) {
   const [items, setItems] = useState([]);
-
-  useEffect(() => {
-    getAllProgress('movie').then(setItems); // ✅ solo películas
-  }, []);
-
+  useEffect(() => { getAllProgress('movie').then(setItems); }, []);
   if (items.length === 0) return null;
-
   return (
     <div className="mb-6">
       <h2 className="text-white font-bold text-lg mb-3">▶ Continuar viendo</h2>
@@ -54,11 +46,31 @@ function ContinueWatching({ onPlay }) {
             <div className="relative aspect-[2/3] rounded-xl overflow-hidden bg-white/5 border border-white/10 group-hover:border-orange-500/50 mb-1">
               <div className="absolute inset-0 flex items-center justify-center text-3xl">🎬</div>
               <div className="absolute bottom-0 left-0 right-0 h-1 bg-white/20">
-                <div
-                  className="h-full bg-orange-500"
-                  style={{ width: `${Math.min((item.currentTime / item.duration) * 100, 100)}%` }}
-                />
+                <div className="h-full bg-orange-500" style={{ width: `${Math.min((item.currentTime / item.duration) * 100, 100)}%` }} />
               </div>
+            </div>
+            <span className="text-white text-xs line-clamp-2 leading-tight">{item.name}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function FavoritesSection({ onPlay }) {
+  const [items, setItems] = useState([]);
+  useEffect(() => { getAllFavorites('movie').then(setItems); }, []);
+  if (items.length === 0) return null;
+  return (
+    <div className="mb-6">
+      <h2 className="text-white font-bold text-lg mb-3">❤️ Mis favoritos</h2>
+      <div className="flex gap-3 overflow-x-auto pb-2">
+        {items.map((item, i) => (
+          <div key={i} onClick={() => onPlay(item)} className="flex-shrink-0 w-32 text-left cursor-pointer group">
+            <div className="relative aspect-[2/3] rounded-xl overflow-hidden bg-white/5 border border-white/10 group-hover:border-orange-500/50 mb-1">
+              {item.logo
+                ? <img src={item.logo} alt={item.name} className="w-full h-full object-cover" onError={e => { e.target.style.display = 'none'; }} />
+                : <div className="absolute inset-0 flex items-center justify-center text-3xl">🎬</div>}
             </div>
             <span className="text-white text-xs line-clamp-2 leading-tight">{item.name}</span>
           </div>
@@ -70,29 +82,15 @@ function ContinueWatching({ onPlay }) {
 
 function FavButton({ item, type }) {
   const [fav, setFav] = useState(false);
-
-  useEffect(() => {
-    isFavorite(item.url).then(setFav);
-  }, [item.url]);
-
+  useEffect(() => { isFavorite(item.url, type).then(setFav); }, [item.url, type]);
   const toggle = async (e) => {
-    e.stopPropagation();
-    e.preventDefault();
-    if (fav) {
-      await removeFavorite(item.url);
-      setFav(false);
-    } else {
-      await addFavorite({ ...item, type });
-      setFav(true);
-    }
+    e.stopPropagation(); e.preventDefault();
+    if (fav) { await removeFavorite(item.url, type); setFav(false); }
+    else { await addFavorite({ ...item, type }); setFav(true); }
   };
-
   return (
-    <div
-      onClick={toggle}
-      role="button"
-      className="absolute top-2 right-2 z-10 w-8 h-8 flex items-center justify-center rounded-full bg-black/50 hover:bg-black/80 transition-colors cursor-pointer"
-    >
+    <div onClick={toggle} role="button"
+      className="absolute top-2 right-2 z-10 w-8 h-8 flex items-center justify-center rounded-full bg-black/50 hover:bg-black/80 transition-colors cursor-pointer">
       <span className="text-lg">{fav ? '❤️' : '🤍'}</span>
     </div>
   );
@@ -100,18 +98,12 @@ function FavButton({ item, type }) {
 
 function Player({ movie, onClose }) {
   const [videoEl, setVideoEl] = useState(null);
-
   useEffect(() => {
     if (!movie || !videoEl) return;
-
-    const PROXY_URL = import.meta.env.DEV
-      ? 'http://localhost:3001'
-      : 'https://myconnect-web.onrender.com';
-
+    const PROXY_URL = import.meta.env.DEV ? 'http://localhost:3001' : 'https://myconnect-web.onrender.com';
     const proxiedUrl = `${PROXY_URL}/api/proxy?url=${encodeURIComponent(movie.url)}&transcode=true`;
     videoEl.src = proxiedUrl;
     videoEl.load();
-
     videoEl.onloadedmetadata = async () => {
       const progress = await getProgress(movie.url);
       if (progress && progress.currentTime > 10) {
@@ -120,26 +112,19 @@ function Player({ movie, onClose }) {
       }
       videoEl.play().catch(() => {});
     };
-
     const interval = setInterval(() => {
-      if (videoEl.currentTime > 0 && !videoEl.paused) {
+      if (videoEl.currentTime > 0 && !videoEl.paused)
         saveProgress(movie.url, movie.name, videoEl.currentTime, videoEl.duration || 0, 'movie');
-      }
     }, 5000);
-
     videoEl.onpause = () => {
-      if (videoEl.currentTime > 0) {
+      if (videoEl.currentTime > 0)
         saveProgress(movie.url, movie.name, videoEl.currentTime, videoEl.duration || 0, 'movie');
-      }
     };
-
     return () => {
       clearInterval(interval);
-      if (videoEl.currentTime > 0) {
+      if (videoEl.currentTime > 0)
         saveProgress(movie.url, movie.name, videoEl.currentTime, videoEl.duration || 0, 'movie');
-      }
-      videoEl.pause();
-      videoEl.src = '';
+      videoEl.pause(); videoEl.src = '';
     };
   }, [movie, videoEl]);
 
@@ -176,15 +161,10 @@ export default function Movies() {
         if (!m3uUrl) { setError('No tienes una lista M3U de películas configurada.'); setLoading(false); return; }
         const text = await fetchM3U(m3uUrl);
         const parsed = parseM3UMovies(text);
-        setMovies(parsed);
-        setFiltered(parsed);
+        setMovies(parsed); setFiltered(parsed);
         setGenres(['Todos', ...new Set(parsed.map(m => m.group))]);
-      } catch (e) {
-        console.error(e);
-        setError('Error al cargar las películas.');
-      } finally {
-        setLoading(false);
-      }
+      } catch (e) { console.error(e); setError('Error al cargar las películas.'); }
+      finally { setLoading(false); }
     });
     return unsubAuth;
   }, []);
@@ -206,11 +186,8 @@ export default function Movies() {
   return (
     <div className="p-4 max-w-7xl mx-auto">
       <Player movie={playing} onClose={() => setPlaying(null)} />
-
-      <ContinueWatching onPlay={(item) => {
-        const movie = movies.find(m => m.url === item.url);
-        if (movie) setPlaying(movie);
-      }} />
+      <ContinueWatching onPlay={(item) => { const m = movies.find(m => m.url === item.url); if (m) setPlaying(m); }} />
+      <FavoritesSection onPlay={(item) => { const m = movies.find(m => m.url === item.url); if (m) setPlaying(m); }} />
 
       <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
         <h1 className="text-xl font-bold text-white">🎬 Películas <span className="text-white/30 text-sm font-normal ml-2">{filtered.length} títulos</span></h1>

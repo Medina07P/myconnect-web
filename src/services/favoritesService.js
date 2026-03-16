@@ -1,7 +1,6 @@
 import { doc, setDoc, deleteDoc, getDoc, collection, getDocs } from 'firebase/firestore';
 import { auth, db } from './firebase';
 
-// ✅ ID más confiable basado en la URL completa
 const getId = (url) => {
   let hash = 0;
   for (let i = 0; i < url.length; i++) {
@@ -11,11 +10,18 @@ const getId = (url) => {
   return Math.abs(hash).toString(36);
 };
 
+// ✅ Colección correcta según el tipo — igual que la app móvil
+const getCollection = (type) => {
+  if (type === 'movie') return 'fav_movies';
+  if (type === 'series') return 'fav_series';
+  return 'favorites'; // canales
+};
+
 export async function addFavorite(item) {
   const user = auth.currentUser;
   if (!user) return;
-  const id = getId(item.url);
-  await setDoc(doc(db, 'users', user.uid, 'favorites', id), {
+  const col = getCollection(item.type);
+  await setDoc(doc(db, 'users', user.uid, col, getId(item.url)), {
     url: item.url,
     name: item.name,
     logo: item.logo || '',
@@ -24,23 +30,25 @@ export async function addFavorite(item) {
   });
 }
 
-export async function removeFavorite(itemUrl) {
+export async function removeFavorite(itemUrl, type) {
   const user = auth.currentUser;
   if (!user) return;
-  await deleteDoc(doc(db, 'users', user.uid, 'favorites', getId(itemUrl)));
+  const col = getCollection(type);
+  await deleteDoc(doc(db, 'users', user.uid, col, getId(itemUrl)));
 }
 
-export async function isFavorite(itemUrl) {
+export async function isFavorite(itemUrl, type) {
   const user = auth.currentUser;
   if (!user) return false;
-  const snap = await getDoc(doc(db, 'users', user.uid, 'favorites', getId(itemUrl)));
+  const col = getCollection(type);
+  const snap = await getDoc(doc(db, 'users', user.uid, col, getId(itemUrl)));
   return snap.exists();
 }
 
-export async function getAllFavorites(type = null) {
+export async function getAllFavorites(type) {
   const user = auth.currentUser;
   if (!user) return [];
-  const snap = await getDocs(collection(db, 'users', user.uid, 'favorites'));
-  const all = snap.docs.map(d => d.data()).sort((a, b) => b.updatedAt - a.updatedAt);
-  return type ? all.filter(f => f.type === type) : all;
+  const col = getCollection(type);
+  const snap = await getDocs(collection(db, 'users', user.uid, col));
+  return snap.docs.map(d => d.data()).sort((a, b) => b.updatedAt - a.updatedAt);
 }
