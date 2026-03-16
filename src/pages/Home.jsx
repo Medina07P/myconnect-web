@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { doc, getDoc } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth, db } from '../services/firebase';
@@ -6,6 +6,7 @@ import { useSubscription } from '../hooks/useSubscription';
 import SubscriptionWall from '../components/SubscriptionWall';
 import { fetchM3U } from '../services/fetchM3U';
 import { proxyUrl } from '../services/proxy';
+import Hls from 'hls.js';
 
 function parseM3U(text) {
   const lines = text.split('\n');
@@ -46,11 +47,39 @@ function Player({ channel, onClose }) {
 
     const proxiedUrl = `${PROXY_URL}/api/proxy?url=${encodeURIComponent(channel.url)}&live=true`;
     console.log('Reproduciendo canal:', proxiedUrl);
-    videoEl.src = proxiedUrl;
-    videoEl.load();
-    videoEl.play().catch(() => {});
+
+    let hls = null;
+
+    // ✅ Intenta con HLS.js primero
+    if (Hls.isSupported()) {
+      hls = new Hls({
+        maxBufferLength: 10,
+        enableWorker: true,
+      });
+      hls.loadSource(proxiedUrl);
+      hls.attachMedia(videoEl);
+      hls.on(Hls.Events.MANIFEST_PARSED, () => {
+        videoEl.play().catch(() => {});
+      });
+      hls.on(Hls.Events.ERROR, (_, data) => {
+        if (data.fatal) {
+          console.warn('HLS error, intentando video directo');
+          hls.destroy();
+          hls = null;
+          videoEl.src = proxiedUrl;
+          videoEl.load();
+          videoEl.play().catch(() => {});
+        }
+      });
+    } else {
+      // Safari — reproducción nativa
+      videoEl.src = proxiedUrl;
+      videoEl.load();
+      videoEl.play().catch(() => {});
+    }
 
     return () => {
+      if (hls) hls.destroy();
       videoEl.pause();
       videoEl.src = '';
     };
@@ -124,7 +153,10 @@ export default function Home() {
     <div className="p-4 max-w-7xl mx-auto">
       <Player channel={playing} onClose={() => setPlaying(null)} />
       <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
-        <h1 className="text-xl font-bold text-white">📺 En Vivo <span className="text-white/30 text-sm font-normal ml-2">{filtered.length} canales</span></h1>
+        <h1 className="text-xl font-bold text-white">
+          📺 En Vivo
+          <span className="text-white/30 text-sm font-normal ml-2">{filtered.length} canales</span>
+        </h1>
         <input type="text" placeholder="Buscar canal..." value={search} onChange={e => setSearch(e.target.value)}
           className="bg-white/10 text-white placeholder-white/40 px-4 py-2 rounded-xl outline-none focus:ring-2 focus:ring-red-500 w-64" />
       </div>

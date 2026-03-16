@@ -62,38 +62,134 @@ const server = http.createServer((req, res) => {
 
   // ── TRANSCODE VOD ─────────────────────────────────────────────
   if (transcode) {
-  console.log(`→ Transcoding: ${targetUrl}`);
+    console.log(`→ Checking codec: ${targetUrl}`);
 
-  res.writeHead(200, {
-    'Content-Type': 'video/mp4',
-    'Access-Control-Allow-Origin': '*',
-    'Transfer-Encoding': 'chunked',
-  });
+    const ffprobe = spawn('ffprobe', [
+      '-v', 'quiet',
+      '-print_format', 'json',
+      '-show_streams',
+      '-select_streams', 'v:0',
+      targetUrl,
+    ]);
 
-  const ffmpeg = spawn('ffmpeg', [
-    '-i', targetUrl,
-    '-c:v', 'libx264',
-    '-preset', 'ultrafast',
-    '-tune', 'zerolatency',
-    '-crf', '30',
-    '-vf', 'scale=1280:720',
-    '-c:a', 'aac',
-    '-b:a', '96k',
-    '-g', '30',
-    '-movflags', 'frag_keyframe+empty_moov',
-    '-f', 'mp4',
-    'pipe:1',
-  ], { stdio: ['ignore', 'pipe', 'pipe'] });
+    let probeData = '';
+    ffprobe.stdout.on('data', d => probeData += d);
 
-  ffmpeg.stdout.pipe(res);
-  ffmpeg.stderr.on('data', () => process.stdout.write('.'));
-  ffmpeg.on('error', (e) => {
-    if (!e.message.includes('socket hang up')) console.error('ffmpeg error:', e.message);
-  });
-  req.on('close', () => ffmpeg.kill('SIGKILL'));
-  res.on('close', () => ffmpeg.kill('SIGKILL'));
-  return;
-}
+    ffprobe.on('close', () => {
+      let codec = 'hevc';
+      try {
+        const info = JSON.parse(probeData);
+        codec = info.streams?.[0]?.codec_name || 'hevc';
+      } catch (_) {}
+
+      console.log(`→ Codec: ${codec}`);
+
+      // ✅ Si ya es H.264 — proxy directo con soporte de Range
+      if (codec === 'h264') {
+        console.log('→ H.264 detectado — proxy directo');
+        const headers = {
+          'User-Agent': 'Mozilla/5.0',
+          'Accept': '*/*',
+        };
+        if (req.headers.range) headers['Range'] = req.headers.range;
+
+        const makeDirectRequest = (reqUrl) => {
+          let parsedUrl;
+          try { parsedUrl = new URL(reqUrl); } catch (e) {
+            res.writeHead(400); res.end('Invalid URL'); return;
+          }
+          const client = parsedUrl.protocol === 'https:' ? https : http;
+          const proxyReq = client.request({
+            hostname: parsedUrl.hostname,
+            port: parsedUrl.port || 80,
+            path: parsedUrl.pathname + parsedUrl.search,
+            method: 'GET',
+            headers,
+          }, (proxyRes) => {
+            if (proxyRes.statusCode === 301 || proxyRes.statusCode === 302) {
+              let location = proxyRes.headers.location;
+              proxyRes.resume();
+              if (location.startsWith('/')) {
+                const port = parsedUrl.port ? `:${parsedUrl.port}` : '';
+                location = `${parsedUrl.protocol}//${parsedUrl.hostname}${port}${location}`;
+              }
+              makeDirectRequest(location);
+              return;
+            }
+            const responseHeaders = {
+              'Access-Control-Allow-Origin': '*',
+              'Content-Type': proxyRes.headers['content-type'] || 'video/mp4',
+            };
+            if (proxyRes.headers['content-range']) responseHeaders['Content-Range'] = proxyRes.headers['content-range'];
+            if (proxyRes.headers['content-length']) responseHeaders['Content-Length'] = proxyRes.headers['content-length'];
+            if (proxyRes.headers['accept-ranges']) responseHeaders['Accept-Ranges'] = 'bytes';
+            res.writeHead(proxyRes.statusCode, responseHeaders);
+            proxyRes.pipe(res);
+          });
+          proxyReq.on('error', e => { if (!res.headersSent) { res.writeHead(500); res.end(e.message); } });
+          proxyReq.end();
+        };
+
+        makeDirectRequest(targetUrl);
+        return;
+      }
+
+      // ✅ H.265 o desconocido — transcodificar
+      console.log('→ Transcoding H.265 → H.264');
+      res.writeHead(200, {
+        'Content-Type': 'video/mp4',
+        'Access-Control-Allow-Origin': '*',
+        'Transfer-Encoding': 'chunked',
+      });
+
+      const ffmpeg = spawn('ffmpeg', [
+        '-i', targetUrl,
+        '-c:v', 'libx264',
+        '-preset', 'ultrafast',
+        '-tune', 'zerolatency',
+        '-crf', '30',
+        '-vf', 'scale=1280:720',
+        '-c:a', 'aac',
+        '-b:a', '96k',
+        '-g', '30',
+        '-movflags', 'frag_keyframe+empty_moov',
+        '-f', 'mp4',
+        'pipe:1',
+      ], { stdio: ['ignore', 'pipe', 'pipe'] });
+
+      ffmpeg.stdout.pipe(res);
+      ffmpeg.stderr.on('data', () => process.stdout.write('.'));
+      ffmpeg.on('error', (e) => {
+        if (!e.message.includes('socket hang up')) console.error('ffmpeg error:', e.message);
+      });
+      req.on('close', () => ffmpeg.kill('SIGKILL'));
+      res.on('close', () => ffmpeg.kill('SIGKILL'));
+    });
+
+    ffprobe.on('error', () => {
+      res.writeHead(200, {
+        'Content-Type': 'video/mp4',
+        'Access-Control-Allow-Origin': '*',
+        'Transfer-Encoding': 'chunked',
+      });
+      const ffmpeg = spawn('ffmpeg', [
+        '-i', targetUrl,
+        '-c:v', 'libx264',
+        '-preset', 'ultrafast',
+        '-crf', '30',
+        '-c:a', 'aac',
+        '-b:a', '96k',
+        '-movflags', 'frag_keyframe+empty_moov',
+        '-f', 'mp4',
+        'pipe:1',
+      ], { stdio: ['ignore', 'pipe', 'pipe'] });
+      ffmpeg.stdout.pipe(res);
+      req.on('close', () => ffmpeg.kill('SIGKILL'));
+      res.on('close', () => ffmpeg.kill('SIGKILL'));
+    });
+
+    return;
+  }
 
   // ── PROXY NORMAL ──────────────────────────────────────────────
   const makeRequest = (reqUrl, redirectCount = 0) => {
