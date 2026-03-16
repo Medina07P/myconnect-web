@@ -144,7 +144,12 @@ export default function Movies() {
       </div>
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
         {visible.map((movie, i) => (
-          <button key={i} onClick={() => setPlaying(movie)} className="group flex flex-col gap-2 text-left">
+          
+          <button key={i} onClick={() => {
+  console.log('Click en película:', movie.name);
+  setPlaying(movie);
+}} className="group flex flex-col gap-2 text-left">
+          
             <div className="relative aspect-[2/3] rounded-xl overflow-hidden bg-white/5 border border-white/10 group-hover:border-orange-500/50 transition-all">
               {movie.logo
                 ? <img src={proxyUrl(movie.logo)} alt={movie.name} className="w-full h-full object-cover" onError={e => { e.target.style.display = 'none'; }} />
