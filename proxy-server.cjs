@@ -62,68 +62,40 @@ const server = http.createServer((req, res) => {
 
   // ── TRANSCODE VOD ─────────────────────────────────────────────
   if (transcode) {
-    console.log(`→ Transcoding: ${targetUrl}`);
+  console.log(`→ Transcoding: ${targetUrl}`);
 
-    const ffprobe = spawn('ffprobe', [
-      '-v', 'quiet',
-      '-print_format', 'json',
-      '-show_format',
-      targetUrl,
-    ]);
+  res.writeHead(200, {
+    'Content-Type': 'video/mp4',
+    'Access-Control-Allow-Origin': '*',
+    'Transfer-Encoding': 'chunked',
+  });
 
-    let probeData = '';
-    ffprobe.stdout.on('data', d => probeData += d);
+  const ffmpeg = spawn('ffmpeg', [
+    '-i', targetUrl,
+    '-c:v', 'libx264',
+    '-preset', 'ultrafast',
+    '-tune', 'zerolatency',
+    '-crf', '30',
+    '-vf', 'scale=1280:720',
+    '-c:a', 'aac',
+    '-b:a', '96k',
+    '-g', '30',
+    '-movflags', 'frag_keyframe+empty_moov',
+    '-f', 'mp4',
+    'pipe:1',
+  ], { stdio: ['ignore', 'pipe', 'pipe'] });
 
-    const startTranscode = (duration = 0) => {
-      const responseHeaders = {
-        'Content-Type': 'video/mp4',
-        'Access-Control-Allow-Origin': '*',
-        'Transfer-Encoding': 'chunked',
-      };
-      if (duration > 0) {
-        responseHeaders['X-Content-Duration'] = String(duration);
-        responseHeaders['Content-Duration'] = String(duration);
-      }
-      res.writeHead(200, responseHeaders);
-
-      const ffmpeg = spawn('ffmpeg', [
-        '-i', targetUrl,
-        '-c:v', 'libx264',
-        '-preset', 'ultrafast',
-        '-tune', 'zerolatency',
-        '-crf', '30',
-        '-vf', 'scale=1280:720',
-        '-c:a', 'aac',
-        '-b:a', '96k',
-        '-g', '30',
-        '-movflags', 'frag_keyframe+empty_moov',
-        '-f', 'mp4',
-        'pipe:1',
-      ], { stdio: ['ignore', 'pipe', 'pipe'] });
-
-      ffmpeg.stdout.pipe(res);
-      ffmpeg.stderr.on('data', () => process.stdout.write('.'));
-      ffmpeg.on('error', (e) => {
-        if (!e.message.includes('socket hang up')) {
-          console.error('ffmpeg error:', e.message);
-        }
-      });
-      req.on('close', () => ffmpeg.kill('SIGKILL'));
-      res.on('close', () => ffmpeg.kill('SIGKILL'));
-    };
-
-    ffprobe.on('close', () => {
-      let duration = 0;
-      try {
-        const info = JSON.parse(probeData);
-        duration = parseFloat(info.format?.duration || 0);
-      } catch (_) {}
-      startTranscode(duration);
-    });
-
-    ffprobe.on('error', () => startTranscode(0));
-    return;
-  }
+  ffmpeg.stdout.pipe(res);
+  ffmpeg.stderr.on('data', () => process.stdout.write('.'));
+  ffmpeg.on('error', (e) => {
+    if (!e.message.includes('socket hang up')) {
+      console.error('ffmpeg error:', e.message);
+    }
+  });
+  req.on('close', () => ffmpeg.kill('SIGKILL'));
+  res.on('close', () => ffmpeg.kill('SIGKILL'));
+  return;
+}
 
   // ── PROXY NORMAL ──────────────────────────────────────────────
   const makeRequest = (reqUrl, redirectCount = 0) => {
