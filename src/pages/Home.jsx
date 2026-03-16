@@ -6,6 +6,7 @@ import { useSubscription } from '../hooks/useSubscription';
 import SubscriptionWall from '../components/SubscriptionWall';
 import { fetchM3U } from '../services/fetchM3U';
 import { proxyUrl } from '../services/proxy';
+import { addFavorite, removeFavorite, isFavorite } from '../services/favoritesService';
 
 function parseM3U(text) {
   const lines = text.split('\n');
@@ -34,6 +35,33 @@ function parseM3U(text) {
   return channels.filter(c => c.url && c.name);
 }
 
+function FavButton({ item, type }) {
+  const [fav, setFav] = useState(false);
+
+  useEffect(() => {
+    isFavorite(item.url).then(setFav);
+  }, [item.url]);
+
+  const toggle = async (e) => {
+    e.stopPropagation(); // no abrir el player
+    if (fav) {
+      await removeFavorite(item.url);
+      setFav(false);
+    } else {
+      await addFavorite({ ...item, type });
+      setFav(true);
+    }
+  };
+
+  return (
+    <button
+      onClick={toggle}
+      className="absolute top-2 right-2 z-10 w-8 h-8 flex items-center justify-center rounded-full bg-black/50 hover:bg-black/80 transition-colors"
+    >
+      <span className="text-lg">{fav ? '❤️' : '🤍'}</span>
+    </button>
+  );
+}
 
 function Player({ channel, onClose, channels, onChannelChange }) {
   const [videoEl, setVideoEl] = useState(null);
@@ -164,12 +192,14 @@ export default function Home() {
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
         {visible.map((channel, i) => (
           <button key={i} onClick={() => setPlaying(channel)}
-            className="bg-white/5 hover:bg-white/10 border border-white/10 hover:border-red-500/50 rounded-xl p-3 flex flex-col items-center gap-2 transition-all">
-            {channel.logo
-              ? <img src={proxyUrl(channel.logo)} alt={channel.name} className="w-12 h-12 object-contain rounded-lg" onError={e => { e.target.style.display = 'none'; }} />
-              : <div className="w-12 h-12 bg-white/10 rounded-lg flex items-center justify-center text-2xl">📺</div>}
-            <span className="text-white text-xs text-center line-clamp-2 leading-tight">{channel.name}</span>
-          </button>
+  className="relative bg-white/5 hover:bg-white/10 border border-white/10 hover:border-red-500/50 rounded-xl p-3 flex flex-col items-center gap-2 transition-all">
+  {channel.logo
+    ? <img src={proxyUrl(channel.logo)} alt={channel.name} className="w-12 h-12 object-contain rounded-lg" onError={e => { e.target.style.display = 'none'; }} />
+    : <div className="w-12 h-12 bg-white/10 rounded-lg flex items-center justify-center text-2xl">📺</div>}
+  <span className="text-white text-xs text-center line-clamp-2 leading-tight">{channel.name}</span>
+  {/* ✅ Botón favorito */}
+  <FavButton item={channel} type="channel" />
+</button>
         ))}
         {filtered.length > visibleCount && (
           <div className="col-span-full flex justify-center py-4">
