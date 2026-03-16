@@ -4,6 +4,12 @@ const url = require('url');
 const { spawn } = require('child_process');
 
 const server = http.createServer((req, res) => {
+  // ✅ Health check para Railway
+  if (req.url === '/health') {
+    res.writeHead(200);
+    res.end('OK');
+    return;
+  }
   const parsed = url.parse(req.url, true);
   const targetUrl = parsed.query.url;
   const transcode = parsed.query.transcode === 'true';
