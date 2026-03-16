@@ -5,7 +5,6 @@ const { spawn } = require('child_process');
 
 const server = http.createServer((req, res) => {
 
-  // ✅ Health check
   if (req.url === '/health') {
     res.writeHead(200);
     res.end('OK');
@@ -37,8 +36,14 @@ const server = http.createServer((req, res) => {
   if (live) {
     console.log(`→ Live: ${targetUrl}`);
 
+    res.writeHead(200, {
+      'Content-Type': 'video/mp2t',
+      'Access-Control-Allow-Origin': '*',
+      'Transfer-Encoding': 'chunked',
+      'Cache-Control': 'no-cache',
+    });
+
     const ffmpeg = spawn('ffmpeg', [
-      '-re',
       '-i', targetUrl,
       '-c:v', 'copy',
       '-c:a', 'aac',
@@ -47,20 +52,11 @@ const server = http.createServer((req, res) => {
       'pipe:1',
     ], { stdio: ['ignore', 'pipe', 'pipe'] });
 
-    res.writeHead(200, {
-      'Content-Type': 'video/mp2t',
-      'Access-Control-Allow-Origin': '*',
-      'Transfer-Encoding': 'chunked',
-      'Cache-Control': 'no-cache',
-    });
-
     ffmpeg.stdout.pipe(res);
     ffmpeg.stderr.on('data', () => process.stdout.write('.'));
     ffmpeg.on('error', (e) => console.error('ffmpeg live error:', e.message));
-
-    req.on('close', () => { ffmpeg.kill('SIGKILL'); });
-    res.on('close', () => { ffmpeg.kill('SIGKILL'); });
-
+    req.on('close', () => ffmpeg.kill('SIGKILL'));
+    res.on('close', () => ffmpeg.kill('SIGKILL'));
     return;
   }
 
@@ -88,23 +84,22 @@ const server = http.createServer((req, res) => {
         responseHeaders['X-Content-Duration'] = String(duration);
         responseHeaders['Content-Duration'] = String(duration);
       }
-
       res.writeHead(200, responseHeaders);
 
-     const ffmpeg = spawn('ffmpeg', [
-  '-i', targetUrl,          // ✅ quita -re para que empiece más rápido
-  '-c:v', 'libx264',
-  '-preset', 'ultrafast',
-  '-tune', 'zerolatency',
-  '-crf', '30',
-  '-vf', 'scale=1280:720',
-  '-c:a', 'aac',
-  '-b:a', '96k',
-  '-g', '30',
-  '-movflags', 'frag_keyframe+empty_moov', // ✅ quita faststart
-  '-f', 'mp4',
-  'pipe:1',
-], { stdio: ['ignore', 'pipe', 'pipe'] });
+      const ffmpeg = spawn('ffmpeg', [
+        '-i', targetUrl,
+        '-c:v', 'libx264',
+        '-preset', 'ultrafast',
+        '-tune', 'zerolatency',
+        '-crf', '30',
+        '-vf', 'scale=1280:720',
+        '-c:a', 'aac',
+        '-b:a', '96k',
+        '-g', '30',
+        '-movflags', 'frag_keyframe+empty_moov',
+        '-f', 'mp4',
+        'pipe:1',
+      ], { stdio: ['ignore', 'pipe', 'pipe'] });
 
       ffmpeg.stdout.pipe(res);
       ffmpeg.stderr.on('data', () => process.stdout.write('.'));
@@ -113,9 +108,8 @@ const server = http.createServer((req, res) => {
           console.error('ffmpeg error:', e.message);
         }
       });
-
-      req.on('close', () => { ffmpeg.kill('SIGKILL'); });
-      res.on('close', () => { ffmpeg.kill('SIGKILL'); });
+      req.on('close', () => ffmpeg.kill('SIGKILL'));
+      res.on('close', () => ffmpeg.kill('SIGKILL'));
     };
 
     ffprobe.on('close', () => {
@@ -128,7 +122,6 @@ const server = http.createServer((req, res) => {
     });
 
     ffprobe.on('error', () => startTranscode(0));
-
     return;
   }
 
@@ -196,7 +189,9 @@ const server = http.createServer((req, res) => {
             });
             rs2.pipe(res);
           });
-          r2.on('error', e => { if (!res.headersSent) { res.writeHead(500); res.end(e.message); } });
+          r2.on('error', e => {
+            if (!res.headersSent) { res.writeHead(500); res.end(e.message); }
+          });
           r2.end();
           return;
         }
