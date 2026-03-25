@@ -215,13 +215,22 @@ function Player({ movie, onClose }) {
       </div>
 
       {/* Video — sin controls nativos */}
-      <video
-        ref={setVideoEl}
-        className="flex-1 w-full bg-black cursor-pointer"
-        playsInline
-        onClick={togglePlay}
-      />
-
+              <video
+          ref={setVideoEl}
+          className="flex-1 w-full bg-black"
+          controls
+          autoPlay
+          playsInline
+          onClick={togglePlay}
+          style={{ maxHeight: '100%' }}
+          onDoubleClick={(e) => {
+            if (document.fullscreenElement) {
+              document.exitFullscreen();
+            } else {
+              e.target.requestFullscreen();
+            }
+          }}
+        />
       {/* Spinner de buffering */}
       {buffering && (
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">

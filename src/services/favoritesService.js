@@ -41,14 +41,30 @@ export async function isFavorite(itemUrl, type) {
   const user = auth.currentUser;
   if (!user) return false;
   const col = getCollection(type);
-  const snap = await getDoc(doc(db, 'users', user.uid, col, getId(itemUrl)));
-  return snap.exists();
+  const snap = await getDocs(collection(db, 'users', user.uid, col));
+  return snap.docs.some(d => {
+    const data = d.data();
+    return (data.url || data.streamUrl) === itemUrl;
+  });
 }
-
 export async function getAllFavorites(type) {
   const user = auth.currentUser;
   if (!user) return [];
   const col = getCollection(type);
   const snap = await getDocs(collection(db, 'users', user.uid, col));
-  return snap.docs.map(d => d.data()).sort((a, b) => b.updatedAt - a.updatedAt);
+  return snap.docs.map(d => {
+    const data = d.data();
+    // ✅ Normaliza campos de app móvil → web
+    return {
+      ...data,
+      url: data.url || data.streamUrl || '',
+      logo: data.logo || data.logoUrl || '',
+      name: data.name || '',
+      type: data.type || type,
+    };
+  }).filter(f => f.url).sort((a, b) => {
+    const aTime = a.updatedAt || (a.addedAt?.seconds * 1000) || 0;
+    const bTime = b.updatedAt || (b.addedAt?.seconds * 1000) || 0;
+    return bTime - aTime;
+  });
 }

@@ -121,7 +121,21 @@ function Player({ channel, onClose, channels, onChannelChange }) {
           <button onClick={onClose} className="text-white/60 hover:text-white text-2xl px-2">✕</button>
         </div>
       </div>
-      <video ref={setVideoEl} className="flex-1 w-full bg-black" controls autoPlay playsInline />
+              <video
+          ref={setVideoEl}
+          className="flex-1 w-full bg-black"
+          controls
+          autoPlay
+          playsInline
+          style={{ maxHeight: '100%' }}
+          onDoubleClick={(e) => {
+            if (document.fullscreenElement) {
+              document.exitFullscreen();
+            } else {
+              e.target.requestFullscreen();
+            }
+          }}
+        />
     </div>
   );
 }

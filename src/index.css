@@ -1,3 +1,25 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* ✅ Permite rotación en móvil */
+@media screen and (orientation: landscape) {
+  .player-container {
+    height: 100dvh;
+  }
+}
+
+/* ✅ Video fullscreen correcto en todos los dispositivos */
+video:fullscreen {
+  width: 100vw;
+  height: 100vh;
+  object-fit: contain;
+  background: black;
+}
+
+video:-webkit-full-screen {
+  width: 100vw;
+  height: 100vh;
+  object-fit: contain;
+  background: black;
+}
