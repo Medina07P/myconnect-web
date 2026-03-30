@@ -107,7 +107,7 @@ function FavButton({ item, type }) {
   useEffect(() => { isFavorite(item.url, type).then(setFav); }, [item.url, type]);
   const toggle = async (e) => {
     e.stopPropagation(); e.preventDefault();
-    if (fav) { await removeFavorite(item.url, type); setFav(false); }
+    if (fav) { await removeFavorite(item.name, item.url, type); setFav(false); }
     else { await addFavorite({ ...item, type }); setFav(true); }
   };
   return (
@@ -147,7 +147,7 @@ function Player({ episode, onClose }) {
 
     // Restore progress and start video
     const initVideo = async () => {
-      const progress = await getProgress(episode.url);
+      const progress = await getProgress(episode.url, episode.name);
       const start = (progress && progress.currentTime > 10 && (progress.duration - progress.currentTime) > 30)
         ? progress.currentTime : 0;
       startTimeRef.current = start;
@@ -173,7 +173,7 @@ function Player({ episode, onClose }) {
     const interval = setInterval(() => {
       const realTime = startTimeRef.current + (videoEl.currentTime || 0);
       if (realTime > 0 && !videoEl.paused)
-        saveProgress(episode.url, episode.name, realTime, durationRef.current, 'series');
+        saveProgress(episode.url, episode.name, episode.logo || '', realTime, durationRef.current, 'series');
     }, 5000);
 
     return () => {
@@ -184,7 +184,7 @@ function Player({ episode, onClose }) {
       videoEl.removeEventListener('waiting', onWaiting);
       videoEl.removeEventListener('canplay', onCanPlay);
       const realTime = startTimeRef.current + (videoEl.currentTime || 0);
-      if (realTime > 0) saveProgress(episode.url, episode.name, realTime, durationRef.current, 'series');
+      if (realTime > 0) saveProgress(episode.url, episode.name, episode.logo || '', realTime, durationRef.current, 'series');
       videoEl.pause();
       videoEl.src = '';
     };
@@ -231,7 +231,6 @@ function Player({ episode, onClose }) {
         <video
           ref={setVideoEl}
           className="flex-1 w-full bg-black"
-          controls
           autoPlay
           playsInline
           onClick={togglePlay}

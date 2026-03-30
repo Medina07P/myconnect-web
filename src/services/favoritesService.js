@@ -1,7 +1,11 @@
-import { doc, setDoc, deleteDoc, getDoc, collection, getDocs } from 'firebase/firestore';
+import { doc, setDoc, deleteDoc, getDoc, collection, getDocs, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from './firebase';
 
-const getId = (url) => {
+// ID limpio compatible con APK (nombre sin caracteres especiales, en minúscula)
+const cleanId = (name) => name.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+
+// ID legacy (hash de URL) para retrocompatibilidad de lectura
+const hashId = (url) => {
   let hash = 0;
   for (let i = 0; i < url.length; i++) {
     hash = ((hash << 5) - hash) + url.charCodeAt(i);
@@ -10,31 +14,37 @@ const getId = (url) => {
   return Math.abs(hash).toString(36);
 };
 
-// ✅ Colección correcta según el tipo — igual que la app móvil
 const getCollection = (type) => {
   if (type === 'movie') return 'fav_movies';
   if (type === 'series') return 'fav_series';
-  return 'favorites'; // canales
+  return 'favorites';
 };
 
 export async function addFavorite(item) {
   const user = auth.currentUser;
   if (!user) return;
   const col = getCollection(item.type);
-  await setDoc(doc(db, 'users', user.uid, col, getId(item.url)), {
-    url: item.url,
+  const id = cleanId(item.name);
+  await setDoc(doc(db, 'users', user.uid, col, id), {
+    addedAt: serverTimestamp(),
+    category: item.group || item.category || '',
+    id,
+    logoUrl: item.logo || item.logoUrl || '',
     name: item.name,
-    logo: item.logo || '',
-    type: item.type,
-    updatedAt: Date.now(),
+    streamUrl: item.url || '',
   });
 }
 
-export async function removeFavorite(itemUrl, type) {
+export async function removeFavorite(itemName, itemUrl, type) {
   const user = auth.currentUser;
   if (!user) return;
   const col = getCollection(type);
-  await deleteDoc(doc(db, 'users', user.uid, col, getId(itemUrl)));
+  // Eliminar formato APK (por nombre limpio)
+  await deleteDoc(doc(db, 'users', user.uid, col, cleanId(itemName)));
+  // Eliminar formato legacy (por hash de URL) si existe
+  if (itemUrl) {
+    await deleteDoc(doc(db, 'users', user.uid, col, hashId(itemUrl)));
+  }
 }
 
 export async function isFavorite(itemUrl, type) {
@@ -47,6 +57,7 @@ export async function isFavorite(itemUrl, type) {
     return (data.url || data.streamUrl) === itemUrl;
   });
 }
+
 export async function getAllFavorites(type) {
   const user = auth.currentUser;
   if (!user) return [];
@@ -54,17 +65,17 @@ export async function getAllFavorites(type) {
   const snap = await getDocs(collection(db, 'users', user.uid, col));
   return snap.docs.map(d => {
     const data = d.data();
-    // ✅ Normaliza campos de app móvil → web
     return {
       ...data,
-      url: data.url || data.streamUrl || '',
-      logo: data.logo || data.logoUrl || '',
+      url: data.streamUrl || data.url || '',
+      logo: data.logoUrl || data.logo || '',
       name: data.name || '',
       type: data.type || type,
+      group: data.category || data.group || '',
     };
-  }).filter(f => f.url).sort((a, b) => {
-    const aTime = a.updatedAt || (a.addedAt?.seconds * 1000) || 0;
-    const bTime = b.updatedAt || (b.addedAt?.seconds * 1000) || 0;
+  }).filter(f => f.url || type === 'series').sort((a, b) => {
+    const aTime = a.addedAt?.seconds ? a.addedAt.seconds * 1000 : (a.updatedAt || 0);
+    const bTime = b.addedAt?.seconds ? b.addedAt.seconds * 1000 : (b.updatedAt || 0);
     return bTime - aTime;
   });
 }

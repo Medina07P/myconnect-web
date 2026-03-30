@@ -46,7 +46,7 @@ function FavButton({ item, type }) {
     e.stopPropagation();
     e.preventDefault();
     if (fav) {
-      await removeFavorite(item.url, type);
+      await removeFavorite(item.name, item.url, type);
       setFav(false);
     } else {
       await addFavorite({ ...item, type });
