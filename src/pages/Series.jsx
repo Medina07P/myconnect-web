@@ -66,7 +66,9 @@ function ContinueWatching({ onPlay }) {
         {items.map((item, i) => (
           <div key={i} onClick={() => onPlay(item)} className="flex-shrink-0 w-32 text-left cursor-pointer group">
             <div className="relative aspect-[2/3] rounded-xl overflow-hidden bg-white/5 border border-white/10 group-hover:border-purple-500/50 mb-1">
-              <div className="absolute inset-0 flex items-center justify-center text-3xl">🎭</div>
+              {item.logo
+                ? <img src={proxyUrl(item.logo)} alt={item.name} className="w-full h-full object-cover" onError={e => { e.target.style.display = 'none'; }} />
+                : <div className="absolute inset-0 flex items-center justify-center text-3xl">🎭</div>}
               <div className="absolute bottom-0 left-0 right-0 h-1 bg-white/20">
                 <div className="h-full bg-purple-500" style={{ width: `${Math.min((item.currentTime / item.duration) * 100, 100)}%` }} />
               </div>
