@@ -91,7 +91,7 @@ function FavoritesSection({ onPlay }) {
           <div key={i} onClick={() => onPlay(item)} className="flex-shrink-0 w-32 text-left cursor-pointer group">
             <div className="relative aspect-[2/3] rounded-xl overflow-hidden bg-white/5 border border-white/10 group-hover:border-purple-500/50 mb-1">
               {item.logo
-                ? <img src={item.logo} alt={item.name} className="w-full h-full object-cover" onError={e => { e.target.style.display = 'none'; }} />
+                ? <img src={proxyUrl(item.logo)} alt={item.name} className="w-full h-full object-cover" onError={e => { e.target.style.display = 'none'; }} />
                 : <div className="absolute inset-0 flex items-center justify-center text-3xl">🎭</div>}
             </div>
             <span className="text-white text-xs line-clamp-2 leading-tight">{item.name}</span>
@@ -104,7 +104,7 @@ function FavoritesSection({ onPlay }) {
 
 function FavButton({ item, type }) {
   const [fav, setFav] = useState(false);
-  useEffect(() => { isFavorite(item.url, type).then(setFav); }, [item.url, type]);
+  useEffect(() => { isFavorite(item.url, type, item.name).then(setFav); }, [item.url, item.name, type]);
   const toggle = async (e) => {
     e.stopPropagation(); e.preventDefault();
     if (fav) { await removeFavorite(item.name, item.url, type); setFav(false); }
@@ -124,8 +124,10 @@ function Player({ episode, onClose }) {
   const [curTime, setCurTime] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [buffering, setBuffering] = useState(true);
+  const [showControls, setShowControls] = useState(true);
   const startTimeRef = useRef(0);
   const durationRef = useRef(0);
+  const hideTimerRef = useRef(null);
 
   const PROXY = import.meta.env.DEV ? 'http://localhost:3001' : 'https://myconnect-web.onrender.com';
 
@@ -214,35 +216,51 @@ function Player({ episode, onClose }) {
     document.fullscreenElement ? document.exitFullscreen() : container.requestFullscreen?.();
   };
 
+  const resetHideTimer = () => {
+    setShowControls(true);
+    clearTimeout(hideTimerRef.current);
+    hideTimerRef.current = setTimeout(() => setShowControls(false), 3000);
+  };
+
+  const handleVideoClick = () => {
+    if (!showControls) { resetHideTimer(); return; }
+    togglePlay();
+    resetHideTimer();
+  };
+
+  useEffect(() => {
+    resetHideTimer();
+    return () => clearTimeout(hideTimerRef.current);
+  }, [episode]);
+
   const progress = durationRef.current > 0 ? Math.min((curTime / durationRef.current) * 100, 100) : 0;
 
   if (!episode) return null;
 
   return (
-    <div className="player-container fixed inset-0 bg-black z-50 flex flex-col">
+    <div className="player-container fixed inset-0 bg-black z-50 flex flex-col" onMouseMove={resetHideTimer}>
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 bg-gradient-to-b from-black/90 to-transparent absolute top-0 left-0 right-0 z-10">
+      <div className={`flex items-center justify-between px-4 py-3 bg-gradient-to-b from-black/90 to-transparent absolute top-0 left-0 right-0 z-10 transition-opacity duration-300 ${showControls ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
         <span className="text-white font-bold truncate pr-4 text-sm">{episode.name}</span>
         <button onClick={onClose} className="text-white/60 hover:text-white text-2xl px-2 flex-shrink-0">✕</button>
       </div>
 
-      {/* Video — sin controls nativos */}
-      
-        <video
-          ref={setVideoEl}
-          className="flex-1 w-full bg-black"
-          autoPlay
-          playsInline
-          onClick={togglePlay}
-          style={{ maxHeight: '100%' }}
-          onDoubleClick={(e) => {
-            if (document.fullscreenElement) {
-              document.exitFullscreen();
-            } else {
-              e.target.requestFullscreen();
-            }
-          }}
-        />
+      {/* Video */}
+      <video
+        ref={setVideoEl}
+        className="flex-1 w-full bg-black"
+        autoPlay
+        playsInline
+        onClick={handleVideoClick}
+        style={{ maxHeight: '100%' }}
+        onDoubleClick={(e) => {
+          if (document.fullscreenElement) {
+            document.exitFullscreen();
+          } else {
+            e.target.requestFullscreen();
+          }
+        }}
+      />
 
       {/* Spinner de buffering */}
       {buffering && (
@@ -252,7 +270,7 @@ function Player({ episode, onClose }) {
       )}
 
       {/* Controles custom */}
-      <div className="bg-gradient-to-t from-black to-transparent px-4 pt-8 pb-4 flex flex-col gap-3">
+      <div className={`bg-gradient-to-t from-black to-transparent px-4 pt-8 pb-4 flex flex-col gap-3 transition-opacity duration-300 ${showControls ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
         {/* Barra de progreso */}
         <div
           className="w-full h-1.5 bg-white/20 rounded-full cursor-pointer relative group hover:h-2.5 transition-all"

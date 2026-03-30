@@ -79,7 +79,7 @@ function FavoritesSection({ onPlay }) {
           <div key={i} onClick={() => onPlay(item)} className="flex-shrink-0 w-24 text-left cursor-pointer group">
             <div className="relative w-20 h-20 rounded-xl overflow-hidden bg-white/5 border border-white/10 group-hover:border-red-500/50 mb-1 flex items-center justify-center">
               {item.logo
-                ? <img src={item.logo} alt={item.name} className="w-full h-full object-contain" onError={e => { e.target.style.display = 'none'; }} />
+                ? <img src={proxyUrl(item.logo)} alt={item.name} className="w-full h-full object-contain" onError={e => { e.target.style.display = 'none'; }} />
                 : <span className="text-2xl">📺</span>}
             </div>
             <span className="text-white text-xs line-clamp-2 leading-tight">{item.name}</span>

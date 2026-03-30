@@ -47,10 +47,14 @@ export async function removeFavorite(itemName, itemUrl, type) {
   }
 }
 
-export async function isFavorite(itemUrl, type) {
+export async function isFavorite(itemUrl, type, itemName) {
   const user = auth.currentUser;
   if (!user) return false;
   const col = getCollection(type);
+  if (!itemUrl && itemName) {
+    const docSnap = await getDoc(doc(db, 'users', user.uid, col, cleanId(itemName)));
+    return docSnap.exists();
+  }
   const snap = await getDocs(collection(db, 'users', user.uid, col));
   return snap.docs.some(d => {
     const data = d.data();
